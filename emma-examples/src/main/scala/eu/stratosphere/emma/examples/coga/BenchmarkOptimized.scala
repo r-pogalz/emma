@@ -1,11 +1,8 @@
 package eu.stratosphere.emma.examples.coga
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 
-import scala.collection.parallel._
-import scala.collection.parallel.mutable.ParArray
-
-object Benchmark {
+object BenchmarkOptimized {
 
   val usage =
     """
@@ -37,44 +34,71 @@ object Benchmark {
         case "--num-threads" :: value :: tail =>
           toOptionMap(map ++ Map(numThreadsSym -> value.toInt), tail)
         case string :: opt2 :: tail if isSwitch(opt2) =>
-          toOptionMap(map ++ Map('infile -> string), list.tail)
-        case string :: Nil => toOptionMap(map ++ Map(infileSym -> string), list.tail)
+          toOptionMap(map ++ Map(infileSym -> string), list.tail)
+        case string :: Nil => toOptionMap(map ++ Map('infile -> string), list.tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
     val options = toOptionMap(Map(), arglist)
 
     val bufferedSource = scala.io.Source.fromFile(options(infileSym).asInstanceOf[String])
-    val buffer = mutable.ParArray.newBuilder[Part]
+    val buffer = collection.mutable.ArrayBuffer.newBuilder[Part]
     for (line <- bufferedSource.getLines) {
       val cols = line.split("\\|").map(_.trim)
-      buffer += Part(cols(0), cols(1), cols(2), cols(3), cols(4), cols(5).toInt, cols(6), cols(7).toDouble, cols(8))
+      buffer += Part(
+        cols(0), cols(1), cols(2), cols(3), cols(4), cols(5).toInt, cols(6), cols(7).toDouble, cols(8))
     }
     bufferedSource.close
-    val parts = buffer.result()
-    parts.tasksupport = new ForkJoinTaskSupport(
-      new scala.concurrent.forkjoin.ForkJoinPool(options.getOrElse(numThreadsSym, defaultNumThreads).asInstanceOf[Int]))
+    val parts = buffer.result().toArray
 
     compute(parts, options.getOrElse(warmupSym, defaultWarmup).asInstanceOf[Int],
-      options.getOrElse(roundsSym, defaultRounds).asInstanceOf[Int])
+      options.getOrElse(roundsSym, defaultRounds).asInstanceOf[Int],
+      options.getOrElse(numThreadsSym, defaultNumThreads).asInstanceOf[Int])
   }
 
-  private def compute(parts: ParArray[Part], warmupRounds: Int, times: Int) = {
+  private def compute(parts: Array[Part],
+                      warmupRounds: Int, times: Int, numThreads: Int) = {
     val durationsBuffer = Seq.newBuilder[Long]
-    for (i <- 1 to (warmupRounds + times)) {
-      //actual algorithm to profile
+
+    //preparation for threads
+    val results = new Array[Double](parts.length)
+    val threads = new Array[Thread](numThreads)
+    val minItemsPerThread = parts.length / numThreads
+    val maxItemsPerThread = minItemsPerThread + 1;
+    val threadsWithMaxItems = parts.length % numThreads
+
+    for (currRound <- 1 to (warmupRounds + times)) {
+      //create threads (split work evenly)
+      var start = 0
+      val countDownLatch = new CountDownLatch(numThreads)
+      for (i <- 0 until numThreads) {
+        val itemsCount = if (i < threadsWithMaxItems) maxItemsPerThread else minItemsPerThread
+        val end = start + itemsCount
+        threads(i) = new Thread(new ComputationThread(parts, results, start, end, countDownLatch))
+        start = end
+      }
+
+      //start to profile
       val t0 = System.nanoTime()
-      val computed = parts.map(part => part.pSize * part.pRetailPrice)
+      var i = 0
+      while (i < numThreads) {
+        threads(i).start()
+        i += 1
+      }
+      //wait until threads finished execution
+      countDownLatch.await()
       val t1 = System.nanoTime()
 
       val duration = TimeUnit.NANOSECONDS.toMillis(t1 - t0)
-      if (i <= warmupRounds) {
-        println(s"Execution time(Warm up round $i): $duration ms")
+      if (currRound <= warmupRounds) {
+        println(s"Execution time(Warm up round $currRound): $duration ms")
       } else {
         durationsBuffer += duration
         //      computed.foreach(println)
-        println(s"Execution time(Round ${i - warmupRounds}): $duration ms")
+        println(s"Execution time(Round ${currRound - warmupRounds}): $duration ms")
       }
+      //clear result array
+      for (k <- 0 until results.length) results(k) = 0.0
     }
     val durations = durationsBuffer.result()
 
@@ -87,6 +111,22 @@ object Benchmark {
     println(s"Max execution time: $max ms")
     println(s"Average execution time: $avg ms")
     //compute standard deviation and 99% confidence interval
+  }
+
+  class ComputationThread(parts: Array[Part],
+                          results: Array[Double], start: Int, end: Int,
+                          countDownLatch: CountDownLatch) extends Runnable {
+
+    def run = {
+      //computation
+      var j = start
+      while (j < end) {
+        results(j) = parts(j).pSize * parts(j).pRetailPrice
+        j += 1
+      }
+      countDownLatch.countDown()
+    }
+
   }
 
   case class Part(pPartKey: String, pName: String, pMfgr: String, pBrand: String, pType: String, pSize: Int,
