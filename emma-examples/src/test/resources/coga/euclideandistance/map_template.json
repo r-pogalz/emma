@@ -1,0 +1,41 @@
+{
+  "QUERY_PLAN": {
+    "OPERATOR_NAME": "PROJECTION",
+    "ATTRIBUTES": [
+      {
+        "ATTRIBUTE_REFERENCE": {
+          "COLUMN_NAME": "%s",
+          "TABLE_NAME": "<COMPUTED>",
+          "ATTRIBUTE_TYPE": "DOUBLE",
+          "VERSION": 1
+        }
+      }
+    ],
+    "LEFT_CHILD": {
+        "OPERATOR_NAME": "MAP_UDF",
+        "MAP_UDF_OUTPUT_ATTRIBUTES": [
+          {
+            "ATTRIBUTE_TYPE": "double",
+            "ATTRIBUTE_NAME": "%s",
+            "INTERNAL_VARIABLE_NAME": "%s"
+          }
+        ],
+        "MAP_UDF_CODE": [
+          "%s"
+        ],
+        "LEFT_CHILD": {
+          "OPERATOR_NAME": "CROSS_JOIN",
+          "LEFT_CHILD": {
+            "OPERATOR_NAME": "TABLE_SCAN",
+            "TABLE_NAME": "%s"
+          },
+          "RIGHT_CHILD": {
+            "OPERATOR_NAME": "TABLE_SCAN",
+            "TABLE_NAME": "%s"
+          }
+      },
+      "RIGHT_CHILD": null
+    },
+    "RIGHT_CHILD": null
+  }
+}

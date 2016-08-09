@@ -104,6 +104,11 @@
             </dependency>
             <dependency>
                 <groupId>eu.stratosphere</groupId>
+                <artifactId>emma-cogadb</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>eu.stratosphere</groupId>
                 <artifactId>emma-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -177,19 +182,16 @@
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-scala_${scala.tools.version}</artifactId>
                 <version>${flink.version}</version>
-                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-java</artifactId>
                 <version>${flink.version}</version>
-                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-clients_${scala.tools.version}</artifactId>
                 <version>${flink.version}</version>
-                <scope>provided</scope>
             </dependency>
 
             <!-- Spark -->
@@ -504,6 +506,7 @@
         <module>emma-common</module>
         <module>emma-language</module>
         <module>emma-backend</module>
+        <module>emma-cogadb</module>
         <module>emma-flink</module>
         <module>emma-spark</module>
         <module>emma-examples</module>

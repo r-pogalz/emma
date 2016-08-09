@@ -36,6 +36,24 @@
             <artifactId>scala-compiler</artifactId>
         </dependency>
 
+        <!-- Flink -->
+        <!-- TODO: Remove -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-scala_${scala.tools.version}</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-java_${scala.tools.version}</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients_${scala.tools.version}</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+
         <!-- Emma -->
         <dependency>
             <groupId>eu.stratosphere</groupId>
@@ -48,6 +66,10 @@
         <dependency>
             <groupId>eu.stratosphere</groupId>
             <artifactId>emma-flink</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>eu.stratosphere</groupId>
+            <artifactId>emma-cogadb</artifactId>
         </dependency>
         <!-- Emma (test jars) -->
         <dependency>
