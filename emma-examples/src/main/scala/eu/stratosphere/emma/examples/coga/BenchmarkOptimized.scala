@@ -18,6 +18,8 @@ object BenchmarkOptimized {
   val numThreadsSym = 'numthreads
   val infileSym = 'infile
 
+  val confidenceCriticalValue = 2.325
+
   def main(args: Array[String]) = {
     if (args.length == 0) println(usage)
     val arglist = args.toList
@@ -90,6 +92,7 @@ object BenchmarkOptimized {
       val t1 = System.nanoTime()
 
       val duration = TimeUnit.NANOSECONDS.toMillis(t1 - t0)
+      //discard warm up rounds from measurement
       if (currRound <= warmupRounds) {
         println(s"Execution time(Warm up round $currRound): $duration ms")
       } else {
@@ -103,14 +106,20 @@ object BenchmarkOptimized {
     val durations = durationsBuffer.result()
 
     println("===========================SUMMARY==============================")
-    val min = durations.min
-    val max = durations.max
-    val avg = durations.sum / times.toDouble
+    val n = durations.size
+    val avg = durations.sum / n
+    val variance = durations.map(d => scala.math.pow(d - avg, 2.0)).sum / n
+    val deviation = scala.math.sqrt(variance)
+    //calculate 99%-confidence-interval
+    val confidenceBorder = confidenceCriticalValue * (deviation / scala.math.sqrt(n))
+    val lowerBound = avg - confidenceBorder
+    val upperBound = avg + confidenceBorder
 
-    println(s"Min execution time: $min ms")
-    println(s"Max execution time: $max ms")
+    println(s"Min execution time: ${durations.min} ms")
+    println(s"Max execution time: ${durations.max} ms")
     println(s"Average execution time: $avg ms")
-    //compute standard deviation and 99% confidence interval
+    println(s"Standard deviation: $deviation ms")
+    println(s"99% confidence interval: [$lowerBound, $upperBound]")
   }
 
   class ComputationThread(parts: Array[Part],
