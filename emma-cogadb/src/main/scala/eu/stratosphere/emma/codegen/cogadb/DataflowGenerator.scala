@@ -8,7 +8,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.UUID
 
 import eu.stratosphere.emma.api.{CSVInputFormat, CSVOutputFormat, ParallelizedDataBag, TextInputFormat}
-import eu.stratosphere.emma.codegen.cogadb.UDFParser.UDFClosure
+import eu.stratosphere.emma.codegen.cogadb.CoGaUDFCompiler.UDFClosure
 import eu.stratosphere.emma.codegen.utils.DataflowCompiler
 import eu.stratosphere.emma.ir
 import eu.stratosphere.emma.macros.RuntimeUtil
@@ -183,24 +183,28 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
             s"Cannot create CoGaDB CsvInputFormat for non-product type ${typeOf(op.tag)}")
 
         //for COGADB
-        path = new File(op.location).getParent
-        val loadScript = scala.io.Source.fromFile(s"$path/read_template.json").getLines.mkString
+        try {
+          path = new File(op.location).getParent
+          val loadScript = scala.io.Source.fromFile(s"$path/read_template.json").getLines.mkString
 
-        val inputFileName = new File(op.location).getName
-        copy(get(op.location), get(s"/Users/rpogalz/CoGaShared/euclideandist/$inputFileName"), REPLACE_EXISTING)
-        val substitute1 = loadScript.format("CROSS" +
-          "$1_1", "CROSS$1_1", inputFileName)
-        val substitute2 = loadScript.format("CROSS$1_2", "CROSS$1_2", inputFileName)
+          val inputFileName = new File(op.location).getName
+          copy(get(op.location), get(s"/Users/rpogalz/CoGaShared/euclideandist/$inputFileName"), REPLACE_EXISTING)
+          val substitute1 = loadScript.format("CROSS" +
+            "$1_1", "CROSS$1_1", inputFileName)
+          val substitute2 = loadScript.format("CROSS$1_2", "CROSS$1_2", inputFileName)
 
-        scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_1.json")(codec = Codec.ISO8859).
-          writeAll(substitute1)
-        scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_2.json")(codec = Codec.ISO8859).
-          writeAll(substitute2)
+          scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_1.json")(codec = Codec.ISO8859).
+            writeAll(substitute1)
+          scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_2.json")(codec = Codec.ISO8859).
+            writeAll(substitute2)
 
-        executeOnCoGaDB(s"$sharedCoGaFolder/load_script_1.json")
-        executeOnCoGaDB(s"$sharedCoGaFolder/load_script_2.json")
-        //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/load_script_1.json")
-        //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/load_script_2.json")
+          executeOnCoGaDB(s"$sharedCoGaFolder/load_script_1.json")
+          executeOnCoGaDB(s"$sharedCoGaFolder/load_script_2.json")
+          //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/load_script_1.json")
+          //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/load_script_2.json")
+        } catch {
+          case e: Exception => println("Warning: Could not fill json templates.")
+        }
 
         //FLINK
         val inFmt = $"inFmt$$flink"
@@ -223,9 +227,13 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def executeOnCoGaDB(jsonPath: String) = {
-    val output = (s"echo execute_query_from_json $jsonPath" #|
-      "nc localhost 8000").!!
-    println(output)
+    try {
+      val output = (s"echo execute_query_from_json $jsonPath" #|
+        "nc localhost 8000").!!
+      println(output)
+    } catch {
+      case e: Exception => println("Warning: no process listening on port 8000")
+    }
   }
 
   private def sendMsg(msg: String) = {
@@ -253,14 +261,18 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     val outFormatTree = op.format match {
       case fmt: CSVOutputFormat[_] =>
         //CoGaDB
-        val exportTemplate = scala.io.Source.fromFile(s"$path/export_template.json").getLines.mkString
-        //        val substitute = exportTemplate.format(op.location, "DIST")
-        val substitute = exportTemplate.format("DIST")
+        try {
+          val exportTemplate = scala.io.Source.fromFile(s"$path/export_template.json").getLines.mkString
+          //        val substitute = exportTemplate.format(op.location, "DIST")
+          val substitute = exportTemplate.format("DIST")
 
-        scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/export_script.json")(codec = Codec.ISO8859).
-          writeAll(substitute)
-        //        executeOnCoGaDB(s"$sharedCoGaFolder/export_script.json")
-        //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/export_script.json")
+          scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/export_script.json")(codec = Codec.ISO8859).
+            writeAll(substitute)
+          //        executeOnCoGaDB(s"$sharedCoGaFolder/export_script.json")
+          //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/export_script.json")
+        } catch {
+          case e: Exception => println("Warning: Could not fill json templates.")
+        }
 
         //Flink
         if (!(T <:< weakTypeOf[Product]))
@@ -349,6 +361,8 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     //    val checked = comp.Type.check(fun)
     //    val anf = typeCheckAndANF(checked)
 
+    //COGADB
+    //    try {
     //extract input params of UDF
     val input = UDFParser.extractInputParams(mapFun)
     implicit val udfClosure = new UDFClosure()
@@ -358,18 +372,24 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     udfClosure.inputMapping += "cross$1._2.y" -> "cross$1_2.y"
 
     //CoGaDB UDF compilation
-    val transformedMapFun = UDFParser.modifiedTree(mapFun)
-    val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
-    println(cogaMapUDF)
+    val transformedMapFun = CoGaUDFCompiler.compile(mapFun)
+    println(transformedMapFun._1)
+    //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
+    //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
+    //      println(cogaMapUDF)
+
     //read map template and substitute mapUDF
     val mapTemplate = scala.io.Source.fromFile(s"$path/map_template.json").getLines.mkString
     val cogaMapOperator = mapTemplate.format(transformedMapFun._2(0),
-      transformedMapFun._2(0), transformedMapFun._2(0), cogaMapUDF, "CROSS$1_1", "CROSS$1_2")
+      transformedMapFun._2(0), transformedMapFun._2(0), transformedMapFun._1, "CROSS$1_1", "CROSS$1_2")
     scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/map_script.json")(codec = Codec.ISO8859).
       writeAll(cogaMapOperator)
 
     executeOnCoGaDB(s"$sharedCoGaFolder/map_script.json")
     //    sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/map_script.json")
+    //    }catch{
+    //      case e: Exception => println("Warning: Could not fill json templates.")
+    //    }
 
     //Flink
     val mapUDF = ir.UDF(mapFun, mapFun.preciseType, tb)

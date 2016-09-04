@@ -10,15 +10,15 @@ object CoGaCodeGenerator {
     case StmtBlock(stmts) => generate(stmts)
     case IfThen(cond, thenStmt) =>
       s"if(${generate(cond)}){" +
-        s"\n${generate(thenStmt)}}\n"
+        s"${generate(thenStmt)}}"
     case IfThenElse(cond, thenStmt, elseStmt) =>
       s"if(${generate(cond)}){" +
-        s"\n${generate(thenStmt)}" +
+        s"${generate(thenStmt)}" +
         s"}else{" +
-        s"\n${generate(elseStmt)}}\n"
+        s"${generate(elseStmt)}}"
     case Assignment(op, leftVal, rightVal) =>
       generate(leftVal) + op + generate(rightVal) + ";"
-    case NoOp(expr) => s"${generate(expr)};\n"
+    case NoOp(expr) => s"${generate(expr)};"
   }
 
   private def generate(stmts: List[Stmt]): String = {

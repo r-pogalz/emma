@@ -43,6 +43,37 @@ case class UnaryOp(op: String, operand: Expr) extends Expr
 
 case class BinaryOp(op: String, left: Expr, right: Expr) extends Operator
 
+object CoGaExpr extends Enumeration {
+  type CoGaExpr = Value
+  val NoOp = Value("%s;")
+  val Assignment = Value("%s=%s;")
+  val LocalVar = Value("%s")
+  val VarDef = Value("")
+  val Const = Value("")
+  val CoGaInputCol = Value("#%s#")
+  val CoGaOutputCol = Value("#<OUT>.%s#")
+  val UnaryOperation = Value("")
+  val BinaryOperation = Value("")
+  val IfThen = Value("if(%s){%s}")
+  val IfThenElse = Value("if(%s){%s}else{%s}")
+
+  def toCode(exprType: CoGaExpr, args: String*) = exprType match {
+    case NoOp | LocalVar | CoGaOutputCol => exprType.toString.format(args(0))
+    case UnaryOperation => args(0).toString.format(args(1))
+    case BinaryOperation => args(0).toString.format(args(1), args(2))
+    case Assignment | IfThen => exprType.toString.format(args(0), args(1))
+    case IfThenElse => exprType.toString.format(args(0), args(1), args(2))
+    case VarDef => args(0).format(args(1))
+    case CoGaInputCol => exprType.toString.format(args(0).toUpperCase)
+    case Const => args(0) match {
+      case "String" => s"${"\"" + args(1) + "\""}"
+      case "Char" => s"'${args(1)}'"
+      case _ => args(1)
+    }
+  }
+}
+
+
 object Type extends Enumeration {
   type Type = Value
   val CHAR = Value("char %s")
@@ -106,8 +137,8 @@ object BOperator {
   //  val Xor = Value("%s^%s")
   //  val Pow = Value("pow(%s,%s)")
 
-  private val binaryOps = collection.immutable.HashMap("$plus" -> "%s+%s",
-    "$minus" -> "%s-%s", "$times" -> "%s*%s", "$div" -> "%s/%s", "$eq$eq" -> "%s==%s", "$up" -> "%s^%s")
+  private val binaryOps = collection.immutable.HashMap("$plus" -> "(%s+%s)",
+    "$minus" -> "(%s-%s)", "$times" -> "(%s*%s)", "$div" -> "(%s/%s)", "$eq$eq" -> "%s==%s", "$up" -> "(%s^%s)")
   
   def fromScalaOp(sel: Select, resultType: String) = {
     val funName = sel.name.toString
