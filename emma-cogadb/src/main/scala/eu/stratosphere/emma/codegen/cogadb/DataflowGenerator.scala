@@ -372,16 +372,17 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     udfClosure.inputMapping += "cross$1._2.y" -> "cross$1_2.y"
 
     //CoGaDB UDF compilation
-    val transformedMapFun = CoGaUDFCompiler.compile(mapFun)
-    println(transformedMapFun._1)
+    val coGaUDF = CoGaUDFCompiler.compile(mapFun)
+    println(coGaUDF.udf)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
     //      println(cogaMapUDF)
 
     //read map template and substitute mapUDF
     val mapTemplate = scala.io.Source.fromFile(s"$path/map_template.json").getLines.mkString
-    val cogaMapOperator = mapTemplate.format(transformedMapFun._2(0),
-      transformedMapFun._2(0), transformedMapFun._2(0), transformedMapFun._1, "CROSS$1_1", "CROSS$1_2")
+    val cogaMapOperator = mapTemplate.format(coGaUDF.output(0).identifier,
+      coGaUDF.output(0).identifier, coGaUDF.output(0).identifier,
+      coGaUDF.udf, "CROSS$1_1", "CROSS$1_2")
     scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/map_script.json")(codec = Codec.ISO8859).
       writeAll(cogaMapOperator)
 

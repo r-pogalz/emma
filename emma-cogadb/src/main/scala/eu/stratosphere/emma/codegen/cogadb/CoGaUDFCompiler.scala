@@ -12,11 +12,15 @@ object CoGaUDFCompiler {
   class UDFClosure {
     val inputMapping = mutable.Map.empty[String, String]
   }
+  
+  case class CoGaUDF(udf: String, output: List[CoGaUDFOutput])
+  
+  case class CoGaUDFOutput(identifier: String, tpe: Type)
 
-  def compile(tree: Tree)(implicit closure: UDFClosure): (String, List[String])= {
-    implicit val outputs = mutable.ListBuffer.empty[String]
+  def compile(tree: Tree)(implicit closure: UDFClosure): CoGaUDF = {
+    implicit val outputs = mutable.ListBuffer.empty[CoGaUDFOutput]
     val compiledUDF = parseEntry(tree)
-    (compiledUDF, outputs.toList)
+    new CoGaUDF(compiledUDF, outputs.toList)
   }
   
   def extractInputParams(tree: Tree): List[ValDef] = {
@@ -33,7 +37,7 @@ object CoGaUDFCompiler {
     }
   }
 
-  private def parseEntry(tree: Tree) (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+  private def parseEntry(tree: Tree) (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     println("----------------- Raw tree ---------------------")
     println(showRaw(tree))
 
@@ -52,7 +56,7 @@ object CoGaUDFCompiler {
   }
 
   private def parse(tree: Tree, potentialOutput: Boolean)
-                   (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+                   (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     tree match {
       case Block(stats, expr) => parse(stats) + parse(expr, true)
       case app@Apply(fun: Select, args: List[Tree]) => {
@@ -61,14 +65,14 @@ object CoGaUDFCompiler {
             //complex type output
             val stmtBlock = args.map(arg => {
               val outputIde = OutputGenerator.nextOutputIdentifier
-              outputs += outputIde
+              outputs += new CoGaUDFOutput(outputIde, arg.tpe)
               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), parseExpr(arg))
             })
             stmtBlock.mkString
           } else {
             //single output
             val outputIde = OutputGenerator.nextOutputIdentifier
-            outputs += outputIde
+            outputs += new CoGaUDFOutput(outputIde, app.tpe)
             toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), parseExpr(app))
           }
         } else {
@@ -87,7 +91,7 @@ object CoGaUDFCompiler {
         if (potentialOutput) {
           val stmtBlock = args.map(arg => {
             val outputIde = OutputGenerator.nextOutputIdentifier
-            outputs += outputIde
+            outputs += new CoGaUDFOutput(outputIde, arg.tpe)
             toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), parseExpr(arg))
           })
           stmtBlock.mkString
@@ -106,7 +110,7 @@ object CoGaUDFCompiler {
       }
       case lit@Literal(_) => {
         val outputIde = OutputGenerator.nextOutputIdentifier
-        outputs += outputIde
+        outputs += new CoGaUDFOutput(outputIde, lit.tpe)
         toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), generateConst(lit))
       }
       case _ => throw new IllegalArgumentException(s"Generation of Stmt for tree type not supported: ${showRaw(tree)}")
@@ -114,7 +118,7 @@ object CoGaUDFCompiler {
   }
 
   private def parse(trees: List[Tree])
-                   (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+                   (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (trees.isEmpty) {
       ""
     } else {
@@ -122,7 +126,7 @@ object CoGaUDFCompiler {
     }
   }
 
-  private def parseExpr(tree: Tree) (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+  private def parseExpr(tree: Tree) (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     println("----------------- Raw tree ---------------------")
     println(showRaw(tree))
 
@@ -141,7 +145,7 @@ object CoGaUDFCompiler {
   //  }
 
   private def parseApply(fun: Select, args: List[Tree])
-                        (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+                        (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (fun.name.toString.startsWith("$")) {
       args.size match {
         case 1 => toCode(CoGaExpr.BinaryOperation, BOperator.fromScalaOp(fun, fun.tpe.finalResultType.toString),
@@ -165,7 +169,7 @@ object CoGaUDFCompiler {
     case _ => false
   }
 
-  private def parseSelect(sel: Select) (implicit closure: UDFClosure, outputs: ListBuffer[String]): String = {
+  private def parseSelect(sel: Select) (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (isCast(sel.name)) {
       sel.qualifier match {
         case ide@Ident(_) => toCode(CoGaExpr.UnaryOperation, UOperator.fromScalaOp(sel), parseExpr(ide))
