@@ -1,5 +1,3 @@
-package eu.stratosphere.emma.examples.coga
-
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -11,16 +9,19 @@ object BenchmarkTPCH {
 
   val usage =
     """
-    Usage: [--warm-up num] [--rounds num] [--num-threads num] path
+    Usage: [--warm-up num] [--rounds num] [--num-threads num] [--debug true] path
     """
 
   val defaultWarmup = 10
   val defaultRounds = 20
   val defaultNumThreads = 1
 
+  var debug = false
+
   val warmupSym = 'warmup
   val roundsSym = 'rounds
   val numThreadsSym = 'numthreads
+  val debugSym = 'debug
   val pathSym = 'path
 
   val confidenceCriticalValue = 2.325
@@ -44,6 +45,9 @@ object BenchmarkTPCH {
         case "--num-threads" :: value :: tail =>
           toOptionMap(map ++ Map(numThreadsSym -> value.toInt),
                       tail)
+        case "--debug" :: value :: tail =>
+          toOptionMap(map ++ Map(debugSym -> value.toBoolean),
+                      tail)
         case string :: opt2 :: tail if isSwitch(opt2) =>
           toOptionMap(map ++ Map(pathSym -> string),
                       list.tail)
@@ -55,43 +59,116 @@ object BenchmarkTPCH {
     val options = toOptionMap(Map(),
                               arglist)
 
+    debug = options.getOrElse(debugSym,
+                              false).asInstanceOf[Boolean]
+
+    val warmupRnds: Int = options.getOrElse(warmupSym,
+                                            defaultWarmup).asInstanceOf[Int]
+    val measureRnds: Int = options.getOrElse(roundsSym,
+                                             defaultRounds).asInstanceOf[Int]
+    val tblPath: String = options.getOrElse(pathSym,
+                                            throw new IllegalArgumentException("No path to tbl files specified"))
+                          .asInstanceOf[String]
+
+    val lineitems = for {
+      l <- read(s"$tblPath/lineitem.tbl",
+                new CSVInputFormat[Lineitem]('|'))
+    } yield l
+    println("read lineitem tbl successfully")
+
+    val partsuppliers = for {
+      ps <- read(s"$tblPath/partsupp.tbl",
+                 new CSVInputFormat[PartSupp]('|'))
+    } yield ps
+    println("read partsupp tbl successfully")
+
+    val suppliers = for {
+      s <- read(s"$tblPath/supplier.tbl",
+                new CSVInputFormat[Supplier]('|'))
+    } yield s
+    println("read supplier tbl successfully")
+
+    /*
+    val customers = for {
+      c <- read(s"$tblPath/customer.tbl",
+                new CSVInputFormat[Customer]('|'))
+    } yield c
+    println("read customer tbl successfully")
+
+    val parts = for {
+      p <- read(s"$tblPath/part.tbl",
+                new CSVInputFormat[Part]('|'))
+    } yield p
+    println("read part tbl successfully")
+
+    val orders = for {
+      o <- read(s"$tblPath/orders.tbl",
+                new CSVInputFormat[Order]('|'))
+    } yield o
+    println("read orders tbl successfully")
+
+    val nations = for {
+      n <- read(s"$tblPath/nation.tbl",
+                new CSVInputFormat[Nation]('|'))
+    } yield n
+    println("read nation tbl successfully")
+
+    val regions = for {
+      r <- read(s"$tblPath/region.tbl",
+                new CSVInputFormat[Region]('|'))
+    } yield r
+    println("read region tbl successfully")
+    */
+
+
     //profile query01 from TPC-H
-    profile(options.getOrElse(warmupSym,
-                              defaultWarmup).asInstanceOf[Int],
-            options.getOrElse(roundsSym,
-                              defaultRounds).asInstanceOf[Int],
-            query01(options.get(pathSym).asInstanceOf[String]),
+    profile(warmupRnds,
+            measureRnds,
+            query01(lineitems),
             "TPC-H Query01")
 
+    /*
     //profile query03 from TPC-H
-    profile(options.getOrElse(warmupSym,
-                              defaultWarmup).asInstanceOf[Int],
-            options.getOrElse(roundsSym,
-                              defaultRounds).asInstanceOf[Int],
-            query03(options.get(pathSym).asInstanceOf[String]),
+    profile(warmupRnds,
+            measureRnds,
+            query03(customers,
+                    orders,
+                    lineitems),
             "TPC-H Query03")
 
     //profile query05 from TPC-H
-    profile(options.getOrElse(warmupSym,
-                              defaultWarmup).asInstanceOf[Int],
-            options.getOrElse(roundsSym,
-                              defaultRounds).asInstanceOf[Int],
-            query05(options.get(pathSym).asInstanceOf[String]),
+    profile(warmupRnds,
+            measureRnds,
+            query05(customers,
+                    orders,
+                    lineitems,
+                    suppliers,
+                    nations,
+                    regions),
             "TPC-H Query05")
+    */
 
     //profile query06 from TPC-H
-    profile(options.getOrElse(warmupSym,
-                              defaultWarmup).asInstanceOf[Int],
-            options.getOrElse(roundsSym,
-                              defaultRounds).asInstanceOf[Int],
-            query06(options.get(pathSym).asInstanceOf[String]),
+    profile(warmupRnds,
+            measureRnds,
+            query06(lineitems),
             "TPC-H Query06")
+
+    //profile join query
+    profile(warmupRnds,
+            measureRnds,
+            joinQuery(partsuppliers,
+                      suppliers),
+            "TPC-H JoinQuery")
   }
 
   private def profile[A](warmupRounds: Int,
                          times: Int,
                          query: => DataBag[A],
                          title: String) = {
+
+    println(s"===========================$title==============================")
+
     val durationsBuffer = Seq.newBuilder[Long]
     for (i <- 1 to (warmupRounds + times)) {
       //actual algorithm to profile
@@ -111,7 +188,7 @@ object BenchmarkTPCH {
     }
     val durations = durationsBuffer.result()
 
-    println(s"===========================$title SUMMARY==============================")
+    println(s"===========================SUMMARY==============================")
     val n = durations.size
     val avg = durations.sum / n
     val variance = durations.map(d => scala.math.pow(d - avg,
@@ -156,17 +233,14 @@ object BenchmarkTPCH {
     *     l_linestatus;
     * }}}
     */
-  def query01(inPath: String) = {
-    val l = for {
-      l <- read(s"$inPath/lineitem.tbl",
-                new CSVInputFormat[Lineitem]('|'))
-      if l.shipDate <= "1998-12-01"
-    } yield l
+  def query01(lineitems: DataBag[Lineitem]) = {
+
+    if (debug) println("executing query01")
 
     // aggregate and compute the final result
     val result = for {
-      g <- l.groupBy(l => new Query01Schema.GrpKey(l.returnFlag,
-                                                   l.lineStatus))
+      g <- lineitems.withFilter(l => l.shipDate <= "1998-12-01").groupBy(l => new Query01Schema.GrpKey(l.returnFlag,
+                                                                                                       l.lineStatus))
     } yield {
       // compute base aggregates
       val sumQty = g.values.map(_.quantity).sum
@@ -186,6 +260,9 @@ object BenchmarkTPCH {
                            avgDisc = sumDiscPrice / countOrder,
                            countOrder)
     }
+
+    if (debug) println(s"Query01 Results: $result")
+
     result
   }
 
@@ -217,25 +294,29 @@ object BenchmarkTPCH {
     *     o_orderdate;
     * }}}
     */
-  def query03(inPath: String) = {
+  def query03(customers: DataBag[Customer],
+              orders: DataBag[Order],
+              lineitems: DataBag[Lineitem]) = {
+
+    if (debug) println("executing query03")
+
     // compute join part of the query
     val join = for {
-      c <- read(s"$inPath/customer.tbl",
-                new CSVInputFormat[Customer]('|'));
-      if c.mktSegment == "AUTOMOBILE";
-      o <- read(s"$inPath/orders.tbl",
-                new CSVInputFormat[Order]('|'));
-      if o.orderDate < "1996-06-30";
-      if c.custKey == o.custKey;
-      l <- read(s"$inPath/lineitem.tbl",
-                new CSVInputFormat[Lineitem]('|'));
-      if l.shipDate > "1996-06-30";
+      c <- customers
+      if c.mktSegment == "AUTOMOBILE"
+      o <- orders
+      if o.orderDate < "1996-06-30"
+      if c.custKey == o.custKey
+      l <- lineitems
+      if l.shipDate > "1996-06-30"
       if l.orderKey == o.orderKey
     } yield Query03Schema.Join(l.orderKey,
                                l.extendedPrice,
                                l.discount,
                                o.orderDate,
                                o.shipPriority)
+
+    if (debug) println("computed join for query03")
 
     // aggregate and compute the final result
     val result = for (
@@ -248,6 +329,9 @@ object BenchmarkTPCH {
                                  g.key.orderDate,
                                  g.key.shipPriority)
       }
+
+    if (debug) println(s"Query03 Results: $result")
+
     result
   }
 
@@ -281,7 +365,15 @@ object BenchmarkTPCH {
     *    revenue desc;
     * }}}
     */
-  def query05(inPath: String) = {
+  def query05(customers: DataBag[Customer],
+              orders: DataBag[Order],
+              lineitems: DataBag[Lineitem],
+              suppliers: DataBag[Supplier],
+              nations: DataBag[Nation],
+              regions: DataBag[Region]) = {
+
+    if (debug) println("executing query05")
+
     val dfm = new SimpleDateFormat("yyyy-MM-dd")
     val cal = Calendar.getInstance()
     cal.setTime(dfm.parse("1994-01-01"))
@@ -291,30 +383,26 @@ object BenchmarkTPCH {
 
     // compute join part of the query
     val join = for {
-      c <- read(s"$inPath/customer.tbl",
-                new CSVInputFormat[Customer]('|'))
-      o <- read(s"$inPath/orders.tbl",
-                new CSVInputFormat[Order]('|'))
+      c <- customers
+      o <- orders
       if o.orderDate >= "1994-01-01"
       if o.orderDate < nextYear
       if c.custKey == o.custKey
-      l <- read(s"$inPath/lineitem.tbl",
-                new CSVInputFormat[Lineitem]('|'))
+      l <- lineitems
       if l.orderKey == o.orderKey
-      s <- read(s"$inPath/supplier.tbl",
-                new CSVInputFormat[Supplier]('|'))
+      s <- suppliers
       if l.suppKey == s.suppKey
-      n <- read(s"$inPath/nation.tbl",
-                new CSVInputFormat[Nation]('|'))
+      n <- nations
       if c.nationKey == s.nationKey
       if s.nationKey == n.nationKey
-      r <- read(s"$inPath/region.tbl",
-                new CSVInputFormat[Region]('|'))
+      r <- regions
       if r.name == "AMERICA"
       if n.regionKey == r.regionKey
     } yield Query05Schema.Join(n.name,
                                l.extendedPrice,
                                l.discount)
+
+    if (debug) println("computed join for query05")
 
     // aggregate and compute the final result
     val result = for {
@@ -322,6 +410,9 @@ object BenchmarkTPCH {
     } yield Query05Schema.Result(
                                   g.key.name,
                                   g.values.map(x => x.extendedPrice * (1 - x.discount)).sum)
+
+    if (debug) println(s"Query05 Results: $result")
+
     result
   }
 
@@ -340,14 +431,16 @@ object BenchmarkTPCH {
     *    and l_quantity < [QUANTITY];
     * }}}
     */
-  def query06(inPath: String) = {
+  def query06(lineitems: DataBag[Lineitem]) = {
+
+    if (debug) println("executing query06")
+
     val df = new SimpleDateFormat("yyyy-MM-dd")
     val nextYear = df.format(DateUtils.addYears(df.parse("1994-01-01"),
                                                 1))
 
     val select = for {
-      l <- read(s"$inPath/lineitem.tbl",
-                new CSVInputFormat[Lineitem]('|'))
+      l <- lineitems
       if l.shipDate >= "1994-01-01"
       if l.shipDate < nextYear
       if l.discount >= (0.06 - 0.01)
@@ -357,11 +450,62 @@ object BenchmarkTPCH {
       new Query06Schema.Select(l.extendedPrice,
                                l.discount)
 
+    if (debug) println("computed filter for query06")
+
     // aggregate and compute the final result
     val result = for {
       g <- select.groupBy(x => new Query06Schema.GrpKey("*"))
     } yield Query06Schema.Result(
                                   g.values.map(x => x.extendedPrice * x.discount).sum)
+
+    if (debug) println(s"Query06 Results: $result")
+
+    result
+  }
+
+  /**
+    * Original query:
+    *
+    * {{{
+    * select
+    *    s_nationkey,
+    *    sum(ps_supplycost)
+    * from
+    *    partsupp,
+    *    supplier
+    * where
+    *    s_suppkey = ps_suppkey
+    * group by
+    *    s_nationkey
+    * }}}
+    */
+  def joinQuery(partsuppliers: DataBag[PartSupp],
+                suppliers: DataBag[Supplier]) = {
+
+    if (debug) println("executing join query")
+
+    //compute join part
+    var i = 0
+    val join = for {
+      ps <- partsuppliers
+      s <- suppliers
+      if (ps.suppKey == s.suppKey)
+    } yield {
+      Query16Schema.Join(s.nationKey,
+                         ps.supplyCost)
+    }
+
+    if (debug) println("computed join for query16")
+
+    // aggregate and compute the final result
+    val result = for {
+      g <- join.groupBy(x => new Query16Schema.GrpKey(x.key))
+    } yield Query16Schema.Result(
+                                  g.key.nationKey,
+                                  g.values.map(j => j.value).sum)
+
+    if (debug) println(s"JoinQuery Results: $result")
+
     result
   }
 
@@ -426,6 +570,18 @@ object BenchmarkTPCH {
 
   }
 
+  object Query16Schema {
+
+    case class GrpKey(nationKey: Int)
+
+    case class Join(key: Int,
+                    value: Double)
+
+    case class Result(key: Int,
+                      value: Double)
+
+  }
+
   case class Nation(nationKey: Int,
                     name: String,
                     regionKey: Int,
@@ -435,7 +591,6 @@ object BenchmarkTPCH {
                     name: String,
                     comment: String)
 
-  //TODO not used yet
   case class Part(partKey: Int,
                   name: String,
                   mfgr: String,
@@ -454,7 +609,6 @@ object BenchmarkTPCH {
                       accBal: Double,
                       comment: String)
 
-  //TODO not used yet
   case class PartSupp(partKey: Int,
                       suppKey: Int,
                       availQty: Int,
