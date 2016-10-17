@@ -73,7 +73,6 @@ object CoGaExpr extends Enumeration {
   }
 }
 
-
 object Type extends Enumeration {
   type Type = Value
   val CHAR = Value("char %s")
@@ -96,6 +95,11 @@ object Type extends Enumeration {
     case "Boolean" => BOOLEAN
     case "AnyVal" => ANY
     case _ => throw new IllegalArgumentException(s"Type $tpe not supported.")
+  }
+  
+  def isScalaBasicType(tpe: String) = tpe match {
+    case "Int" | "Long" | "Float" | "Double" | "String" | "java.lang.String" | "Char" | "Boolean" | "Byte" => true
+    case _ => false
   }
 }
 
