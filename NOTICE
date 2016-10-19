@@ -82,6 +82,7 @@ This project includes:
   dom4j under BSD License
   EL under The Apache Software License, Version 2.0
   emma under The Apache License, Version 2.0
+  emma-cogadb under The Apache License, Version 2.0
   emma-examples under The Apache License, Version 2.0
   emma-flink under The Apache License, Version 2.0
   emma-gui under The Apache License, Version 2.0

@@ -645,6 +645,7 @@
 
     <modules>
         <module>emma-language</module>
+        <module>emma-cogadb</module>
         <module>emma-flink</module>
         <module>emma-spark</module>
         <module>emma-examples</module>
