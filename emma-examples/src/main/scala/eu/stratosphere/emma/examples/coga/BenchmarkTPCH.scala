@@ -1,9 +1,13 @@
+import java.io.{File, FileInputStream}
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 import eu.stratosphere.emma.api.{CSVInputFormat, _}
 import org.apache.commons.lang.time.DateUtils
+
+import scala.collection.mutable.ListBuffer
 
 object BenchmarkTPCH {
 
@@ -37,104 +41,69 @@ object BenchmarkTPCH {
       list match {
         case Nil => map
         case "--warm-up" :: value :: tail =>
-          toOptionMap(map ++ Map(warmupSym -> value.toInt),
-                      tail)
+          toOptionMap(map ++ Map(warmupSym -> value.toInt), tail)
         case "--rounds" :: value :: tail =>
-          toOptionMap(map ++ Map(roundsSym -> value.toInt),
-                      tail)
+          toOptionMap(map ++ Map(roundsSym -> value.toInt), tail)
         case "--num-threads" :: value :: tail =>
-          toOptionMap(map ++ Map(numThreadsSym -> value.toInt),
-                      tail)
+          toOptionMap(map ++ Map(numThreadsSym -> value.toInt), tail)
         case "--debug" :: value :: tail =>
-          toOptionMap(map ++ Map(debugSym -> value.toBoolean),
-                      tail)
+          toOptionMap(map ++ Map(debugSym -> value.toBoolean), tail)
         case string :: opt2 :: tail if isSwitch(opt2) =>
-          toOptionMap(map ++ Map(pathSym -> string),
-                      list.tail)
-        case string :: Nil => toOptionMap(map ++ Map(pathSym -> string),
-                                          list.tail)
+          toOptionMap(map ++ Map(pathSym -> string), list.tail)
+        case string :: Nil => toOptionMap(map ++ Map(pathSym -> string), list.tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
-    val options = toOptionMap(Map(),
-                              arglist)
+    val options = toOptionMap(Map(), arglist)
 
-    debug = options.getOrElse(debugSym,
-                              false).asInstanceOf[Boolean]
+    debug = options.getOrElse(debugSym, false).asInstanceOf[Boolean]
 
-    val warmupRnds: Int = options.getOrElse(warmupSym,
-                                            defaultWarmup).asInstanceOf[Int]
-    val measureRnds: Int = options.getOrElse(roundsSym,
-                                             defaultRounds).asInstanceOf[Int]
-    val tblPath: String = options.getOrElse(pathSym,
-                                            throw new IllegalArgumentException("No path to tbl files specified"))
+    val warmupRnds: Int = options.getOrElse(warmupSym, defaultWarmup).asInstanceOf[Int]
+    val measureRnds: Int = options.getOrElse(roundsSym, defaultRounds).asInstanceOf[Int]
+    val tblPath: String = options
+                          .getOrElse(pathSym, throw new IllegalArgumentException("No path to tbl files specified"))
                           .asInstanceOf[String]
 
-    val lineitems = for {
-      l <- read(s"$tblPath/lineitem.tbl",
-                new CSVInputFormat[Lineitem]('|'))
-    } yield l
+    var lineitems = read(s"$tblPath/lineitem.tbl", new CSVInputFormat[Lineitem]('|'))
     println("read lineitem tbl successfully")
 
-    val partsuppliers = for {
-      ps <- read(s"$tblPath/partsupp.tbl",
-                 new CSVInputFormat[PartSupp]('|'))
-    } yield ps
-    println("read partsupp tbl successfully")
+    //profile query01 from TPC-H
+    profile(warmupRnds, measureRnds, query01(lineitems), "TPC-H Query01")
 
-    val suppliers = for {
-      s <- read(s"$tblPath/supplier.tbl",
-                new CSVInputFormat[Supplier]('|'))
-    } yield s
+    System.gc()
+    System.runFinalization()
+
+    //profile query06 from TPC-H
+    profile(warmupRnds, measureRnds, query06(lineitems), "TPC-H Query06")
+
+    System.gc()
+    System.runFinalization()
+
+    var customers = read(s"$tblPath/customer.tbl", new CSVInputFormat[Customer]('|'))
+    println("read customer tbl successfully")
+
+    var orders = read(s"$tblPath/orders.tbl", new CSVInputFormat[Order]('|'))
+    println("read orders tbl successfully")
+
+    //profile query03 from TPC-H
+    profile(warmupRnds, measureRnds, query03(customers, orders, lineitems), "TPC-H Query03")
+
+    System.gc()
+    System.runFinalization()
+
+    var suppliers = read(s"$tblPath/supplier.tbl", new CSVInputFormat[Supplier]('|'))
     println("read supplier tbl successfully")
 
     /*
-    val customers = for {
-      c <- read(s"$tblPath/customer.tbl",
-                new CSVInputFormat[Customer]('|'))
-    } yield c
-    println("read customer tbl successfully")
-
-    val parts = for {
-      p <- read(s"$tblPath/part.tbl",
-                new CSVInputFormat[Part]('|'))
-    } yield p
+    var parts = read(s"$tblPath/part.tbl", new CSVInputFormat[Part]('|'))
     println("read part tbl successfully")
-
-    val orders = for {
-      o <- read(s"$tblPath/orders.tbl",
-                new CSVInputFormat[Order]('|'))
-    } yield o
-    println("read orders tbl successfully")
-
-    val nations = for {
-      n <- read(s"$tblPath/nation.tbl",
-                new CSVInputFormat[Nation]('|'))
-    } yield n
-    println("read nation tbl successfully")
-
-    val regions = for {
-      r <- read(s"$tblPath/region.tbl",
-                new CSVInputFormat[Region]('|'))
-    } yield r
-    println("read region tbl successfully")
     */
 
+    var nations = read(s"$tblPath/nation.tbl", new CSVInputFormat[Nation]('|'))
+    println("read nation tbl successfully")
 
-    //profile query01 from TPC-H
-    profile(warmupRnds,
-            measureRnds,
-            query01(lineitems),
-            "TPC-H Query01")
-
-    /*
-    //profile query03 from TPC-H
-    profile(warmupRnds,
-            measureRnds,
-            query03(customers,
-                    orders,
-                    lineitems),
-            "TPC-H Query03")
+    var regions = read(s"$tblPath/region.tbl", new CSVInputFormat[Region]('|'))
+    println("read region tbl successfully")
 
     //profile query05 from TPC-H
     profile(warmupRnds,
@@ -146,26 +115,25 @@ object BenchmarkTPCH {
                     nations,
                     regions),
             "TPC-H Query05")
-    */
 
-    //profile query06 from TPC-H
-    profile(warmupRnds,
-            measureRnds,
-            query06(lineitems),
-            "TPC-H Query06")
 
-    //profile join query
-    profile(warmupRnds,
-            measureRnds,
-            joinQuery(partsuppliers,
-                      suppliers),
-            "TPC-H JoinQuery")
+    var points = read(s"$tblPath/points.csv", new CSVInputFormat[Point]('|'))
+    var cntrds = read(s"$tblPath/centroids.csv", new CSVInputFormat[Point]('|'))
+
+    //profile k-means
+    profile(warmupRnds, measureRnds, kmeans(points, cntrds, 0.05), "K-Means Algorithm")
   }
 
-  private def profile[A](warmupRounds: Int,
-                         times: Int,
-                         query: => DataBag[A],
-                         title: String) = {
+  def read[A](path: String, format: InputFormat[A]): Seq[A] = {
+    val is = {
+      val uri = new URI(path)
+      new FileInputStream(new File(path))
+    }
+
+    format.read(is)
+  }
+
+  private def profile[A](warmupRounds: Int, times: Int, query: => Seq[A], title: String) = {
 
     println(s"===========================$title==============================")
 
@@ -185,6 +153,10 @@ object BenchmarkTPCH {
         //      computed.foreach(println)
         println(s"Execution time(Round ${i - warmupRounds}): ${duration}ms")
       }
+
+      //call gc
+      System.gc()
+      System.runFinalization()
     }
     val durations = durationsBuffer.result()
 
@@ -233,14 +205,15 @@ object BenchmarkTPCH {
     *     l_linestatus;
     * }}}
     */
-  def query01(lineitems: DataBag[Lineitem]) = {
+  def query01(lineitems: Seq[Lineitem]) = {
 
     if (debug) println("executing query01")
 
+    val filteredLineitems = lineitems.filter(l => l.shipDate <= "1998-09-02")
+
     // aggregate and compute the final result
     val result = for {
-      g <- lineitems.withFilter(l => l.shipDate <= "1998-12-01").groupBy(l => new Query01Schema.GrpKey(l.returnFlag,
-                                                                                                       l.lineStatus))
+      g <- group(filteredLineitems, (l: Lineitem) => new Query01Schema.GrpKey(l.returnFlag, l.lineStatus))
     } yield {
       // compute base aggregates
       val sumQty = g.values.map(_.quantity).sum
@@ -261,9 +234,11 @@ object BenchmarkTPCH {
                            countOrder)
     }
 
-    if (debug) println(s"Query01 Results: $result")
+    val sorted = result.sortBy(r => (r.returnFlag, r.lineStatus))
 
-    result
+    if (debug) println(s"Query01 Results: $sorted")
+
+    sorted
   }
 
   /**
@@ -294,35 +269,48 @@ object BenchmarkTPCH {
     *     o_orderdate;
     * }}}
     */
-  def query03(customers: DataBag[Customer],
-              orders: DataBag[Order],
-              lineitems: DataBag[Lineitem]) = {
+  def query03(customers: Seq[Customer], orders: Seq[Order], lineitems: Seq[Lineitem]) = {
 
     if (debug) println("executing query03")
 
-    // compute join part of the query
-    val join = for {
-      c <- customers
-      if c.mktSegment == "AUTOMOBILE"
-      o <- orders
-      if o.orderDate < "1996-06-30"
-      if c.custKey == o.custKey
-      l <- lineitems
-      if l.shipDate > "1996-06-30"
-      if l.orderKey == o.orderKey
-    } yield Query03Schema.Join(l.orderKey,
-                               l.extendedPrice,
-                               l.discount,
-                               o.orderDate,
-                               o.shipPriority)
+    val filteredCustomers = customers.filter(_.mktSegment == "BUILDING")
+    val filteredOrders = orders.filter(_.orderDate < "1995-03-15")
+
+    val custJoinOrders = if (filteredCustomers.size < filteredOrders.size) {
+      val createRes = (c: Customer, o: Order) => (o.orderKey, o.orderDate, o.shipPriority)
+      hashJoin(filteredCustomers, (c: Customer) => c.custKey, filteredOrders, (o: Order) => o.custKey, createRes)
+    } else {
+      val createRes = (o: Order, c: Customer) => (o.orderKey, o.orderDate, o.shipPriority)
+      hashJoin(filteredOrders, (o: Order) => o.custKey, filteredCustomers, (c: Customer) => c.custKey, createRes)
+    }
+
+    val filteredLineitems = lineitems.filter(_.shipDate > "1995-03-15")
+
+    val join = if (custJoinOrders.size < filteredLineitems.size) {
+      val createRes = (j: (Int, String, Int), l: Lineitem) => Query03Schema.Join(l.orderKey,
+                                                                                 l.extendedPrice,
+                                                                                 l.discount,
+                                                                                 j._2,
+                                                                                 j._3)
+      hashJoin(custJoinOrders, (j: (Int, String, Int)) => j._1, filteredLineitems, (l: Lineitem) => l.orderKey,
+               createRes)
+    } else {
+      val createRes = (l: Lineitem, j: (Int, String, Int)) => Query03Schema.Join(l.orderKey,
+                                                                                 l.extendedPrice,
+                                                                                 l.discount,
+                                                                                 j._2,
+                                                                                 j._3)
+      hashJoin(filteredLineitems, (l: Lineitem) => l.orderKey, custJoinOrders, (j: (Int, String, Int)) => j._1,
+               createRes)
+    }
 
     if (debug) println("computed join for query03")
 
     // aggregate and compute the final result
     val result = for (
-      g <- join.groupBy(x => new Query03Schema.GrpKey(x.orderKey,
-                                                      x.orderDate,
-                                                      x.shipPriority)))
+      g <- group(join, (x: Query03Schema.Join) => new Query03Schema.GrpKey(x.orderKey,
+                                                                           x.orderDate,
+                                                                           x.shipPriority)))
       yield {
         new Query03Schema.Result(g.key.orderKey,
                                  g.values.map(x => x.extendedPrice * (1 - x.discount)).sum,
@@ -330,9 +318,45 @@ object BenchmarkTPCH {
                                  g.key.shipPriority)
       }
 
-    if (debug) println(s"Query03 Results: $result")
+    val sorted = result.sortBy(r => (-r.revenue, r.orderDate))
 
-    result
+    if (debug) println(s"Query03 Results: $sorted")
+
+    sorted
+  }
+
+  def hashJoin[A, B, Key, Result](left: Seq[A], keyLeft: A => Key, right: Seq[B], keyRight: B => Key,
+                                  createResult: (A, B) => Result): Seq[Result] = {
+    //create hash map for left sequence
+    var hashMap = Map[Key, ListBuffer[A]]()
+    for (l <- left) {
+      val key = keyLeft(l)
+      if (hashMap isDefinedAt key) {
+        var values = hashMap(key)
+        values += l
+        hashMap += (key -> values)
+      } else {
+        hashMap += (key -> ListBuffer[A](l))
+      }
+    }
+
+    val res = ListBuffer[Result]()
+    //traverse right sequence and find matching partner in hash map
+    for (r <- right) {
+      val rightKey = keyRight(r)
+      if (hashMap isDefinedAt rightKey) {
+        val matchedValues = hashMap(rightKey)
+        for (value <- matchedValues) {
+          res += createResult(value, r)
+        }
+      }
+    }
+
+    res.toList
+  }
+
+  def group[A, K](vals: Seq[A], k: (A) => K): Seq[Group[K, Seq[A]]] = {
+    vals.groupBy(k).toSeq.map { case (k, v) => Group(k, v) }
   }
 
   /**
@@ -365,12 +389,12 @@ object BenchmarkTPCH {
     *    revenue desc;
     * }}}
     */
-  def query05(customers: DataBag[Customer],
-              orders: DataBag[Order],
-              lineitems: DataBag[Lineitem],
-              suppliers: DataBag[Supplier],
-              nations: DataBag[Nation],
-              regions: DataBag[Region]) = {
+  def query05(customers: Seq[Customer],
+              orders: Seq[Order],
+              lineitems: Seq[Lineitem],
+              suppliers: Seq[Supplier],
+              nations: Seq[Nation],
+              regions: Seq[Region]) = {
 
     if (debug) println("executing query05")
 
@@ -381,7 +405,64 @@ object BenchmarkTPCH {
             1)
     val nextYear = dfm.format(cal.getTime)
 
+    val filteredOrders = orders.filter(o => o.orderDate >= "1994-01-01" && o.orderDate < nextYear)
+
+    val custJoinOrders = if (customers.size < filteredOrders.size) {
+      val createRes = (c: Customer, o: Order) => (o.orderKey, c.nationKey)
+      hashJoin(customers, (c: Customer) => c.custKey, filteredOrders, (o: Order) => o.custKey, createRes)
+    } else {
+      val createRes = (o: Order, c: Customer) => (o.orderKey, c.nationKey)
+      hashJoin(filteredOrders, (o: Order) => o.custKey, customers, (c: Customer) => c.custKey, createRes)
+    }
+
+    val custOrdersJoinLineitems = if (custJoinOrders.size < lineitems.size) {
+      val createRes = (co: (Int, Int), l: Lineitem) => (co._2, l.suppKey, l.extendedPrice, l.discount)
+      hashJoin(custJoinOrders, (co: (Int, Int)) => co._1, lineitems, (l: Lineitem) => l.orderKey, createRes)
+    } else {
+      val createRes = (l: Lineitem, co: (Int, Int)) => (co._2, l.suppKey, l.extendedPrice, l.discount)
+      hashJoin(lineitems, (l: Lineitem) => l.orderKey, custJoinOrders, (co: (Int, Int)) => co._1, createRes)
+    }
+
+    val custOrdersLitemsJoinSupp = if (custOrdersJoinLineitems.size < suppliers.size) {
+      val createRes = (col: (Int, Int, Double, Double), s: Supplier) => (col._1, col._3, col._4, s.nationKey)
+      hashJoin(custOrdersJoinLineitems, (col: (Int, Int, Double, Double)) => col._2, suppliers,
+               (s: Supplier) => s.suppKey, createRes)
+    } else {
+      val createRes = (s: Supplier, col: (Int, Int, Double, Double)) => (col._1, col._3, col._4, s.nationKey)
+      hashJoin(suppliers, (s: Supplier) => s.suppKey, custOrdersJoinLineitems,
+               (col: (Int, Int, Double, Double)) => col._2, createRes)
+    }
+
+    val filteredCustOrdersLitemsSupp = custOrdersLitemsJoinSupp.filter(cols => cols._1 == cols._4)
+
+    val custOrdersLitemsSuppJoinNation = if (filteredCustOrdersLitemsSupp.size < nations.size) {
+      val createRes = (cols: (Int, Double, Double, Int), n: Nation) => (n.regionKey, cols._2, cols._3,
+        n.name)
+      hashJoin(filteredCustOrdersLitemsSupp, (cols: (Int, Double, Double, Int)) => cols._1, nations,
+               (n: Nation) => n.nationKey, createRes)
+    } else {
+      val createRes = (n: Nation, cols: (Int, Double, Double, Int)) => (n.regionKey, cols._2, cols._3,
+        n.name)
+      hashJoin(nations, (n: Nation) => n.nationKey, filteredCustOrdersLitemsSupp, (cols: (Int, Double, Double, Int))
+      => cols._1, createRes)
+    }
+
+    val filteredRegions = regions.filter(r => r.name == "AMERICA")
+
+    val join = if (custOrdersLitemsSuppJoinNation.size < filteredRegions.size) {
+      val createRes = (colsn: (Int, Double, Double, String), r: Region) => Query05Schema
+                                                                           .Join(colsn._4, colsn._2, colsn._3)
+      hashJoin(custOrdersLitemsSuppJoinNation, (colsn: (Int, Double, Double, String)) => colsn._1, filteredRegions,
+               (r: Region) => r.regionKey, createRes)
+    } else {
+      val createRes = (r: Region, colsn: (Int, Double, Double, String)) => Query05Schema
+                                                                           .Join(colsn._4, colsn._2, colsn._3)
+      hashJoin(filteredRegions, (r: Region) => r.regionKey, custOrdersLitemsSuppJoinNation, (colsn: (Int, Double,
+        Double, String)) => colsn._1, createRes)
+    }
+
     // compute join part of the query
+    /*
     val join = for {
       c <- customers
       o <- orders
@@ -401,19 +482,20 @@ object BenchmarkTPCH {
     } yield Query05Schema.Join(n.name,
                                l.extendedPrice,
                                l.discount)
+                               */
 
     if (debug) println("computed join for query05")
 
     // aggregate and compute the final result
     val result = for {
-      g <- join.groupBy(x => new Query05Schema.GrpKey(x.name))
-    } yield Query05Schema.Result(
-                                  g.key.name,
-                                  g.values.map(x => x.extendedPrice * (1 - x.discount)).sum)
+      g <- group(join, (x: Query05Schema.Join) => new Query05Schema.GrpKey(x.name))
+    } yield Query05Schema.Result(g.key.name, g.values.map(x => x.extendedPrice * (1 - x.discount)).sum)
 
-    if (debug) println(s"Query05 Results: $result")
+    val sorted = result.sortBy(r => -r.revenue)
 
-    result
+    if (debug) println(s"Query05 Results: $sorted")
+
+    sorted
   }
 
   /**
@@ -431,7 +513,7 @@ object BenchmarkTPCH {
     *    and l_quantity < [QUANTITY];
     * }}}
     */
-  def query06(lineitems: DataBag[Lineitem]) = {
+  def query06(lineitems: Seq[Lineitem]) = {
 
     if (debug) println("executing query06")
 
@@ -454,7 +536,7 @@ object BenchmarkTPCH {
 
     // aggregate and compute the final result
     val result = for {
-      g <- select.groupBy(x => new Query06Schema.GrpKey("*"))
+      g <- group(select, (x: Query06Schema.Select) => new Query06Schema.GrpKey("*"))
     } yield Query06Schema.Result(
                                   g.values.map(x => x.extendedPrice * x.discount).sum)
 
@@ -463,51 +545,49 @@ object BenchmarkTPCH {
     result
   }
 
-  /**
-    * Original query:
-    *
-    * {{{
-    * select
-    *    s_nationkey,
-    *    sum(ps_supplycost)
-    * from
-    *    partsupp,
-    *    supplier
-    * where
-    *    s_suppkey = ps_suppkey
-    * group by
-    *    s_nationkey
-    * }}}
-    */
-  def joinQuery(partsuppliers: DataBag[PartSupp],
-                suppliers: DataBag[Supplier]) = {
+  def kmeans(points: Seq[Point], cntrds: Seq[Point], epsilon: Double) = {
+    var centroids = cntrds
+    var iterations = 0
+    var change = 0.0
+    var solution = Seq.empty[Point]
+    
+    do {
+      // calculate nearest centroids
+      solution = for (p <- points) yield {
+        val closestCentroid = centroids.minBy(c => scala.math.sqrt(scala.math.pow(p.x - c.x, 2) +
+                                                                   scala.math.pow(p.y - c.y, 2)))
 
-    if (debug) println("executing join query")
+        Point(closestCentroid.cid, p.x, p.y)
+      }
 
-    //compute join part
-    var i = 0
-    val join = for {
-      ps <- partsuppliers
-      s <- suppliers
-      if (ps.suppKey == s.suppKey)
-    } yield {
-      Query16Schema.Join(s.nationKey,
-                         ps.supplyCost)
-    }
+      // update means
+      val newMeans = for (cluster <- group(solution, (p: Point) => p.cid)) yield {
+        val sum = cluster.values.foldLeft(Point(cluster.key, 0, 0))((total, curr) =>
+                                                                      Point(cluster.key, total.x + curr.x,
+                                                                            total.y + curr.y))
+        val cnt = cluster.values.size.toDouble
+        Point(cluster.key, sum.x / cnt, sum.y / cnt)
+      }
 
-    if (debug) println("computed join for query16")
+      // compute change between the old and the new means
+      change = (for {
+        mean <- centroids
+        newMean <- newMeans
+        if mean.cid == newMean.cid
+      } yield scala.math.sqrt(scala.math.pow(mean.x - newMean.x, 2) + scala.math.pow(mean.y - newMean.y, 2))).sum
 
-    // aggregate and compute the final result
-    val result = for {
-      g <- join.groupBy(x => new Query16Schema.GrpKey(x.key))
-    } yield Query16Schema.Result(
-                                  g.key.nationKey,
-                                  g.values.map(j => j.value).sum)
+      // use new means for the next iteration
+      centroids = newMeans
+      
+      iterations += 1
+    } while (change >= epsilon)
 
-    if (debug) println(s"JoinQuery Results: $result")
-
-    result
+    if (debug) println(s"$iterations iterations to generate K-Means Results: $solution")
+    
+    solution
   }
+
+  case class Point(cid: Int, x: Double, y: Double)
 
   object Query01Schema {
 
@@ -581,6 +661,7 @@ object BenchmarkTPCH {
                       value: Double)
 
   }
+
 
   case class Nation(nationKey: Int,
                     name: String,
