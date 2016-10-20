@@ -16,10 +16,8 @@
 package org.emmalanguage
 package compiler.lang.cogadb
 
-/** CoGaDB plans. */
+/** An abstract syntax tree for CoGaDB plans. */
 object ast {
-
-  // TODO: define a basic data-model that represents CoGaDB dataflows and results
 
   trait Result
 
@@ -34,6 +32,7 @@ object ast {
   case class GroupBy(/* TODO */) extends Op
   case class Selection(predicate: Predicate) extends Op
   case class TableScan(tableName: String, version: Int = 1) extends Op
+  // TODO: define basic operators
   //@formatter:on
 
   // ---------------------------------------------------------------------------

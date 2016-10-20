@@ -34,9 +34,8 @@ class JSerializerSpec extends FreeSpec with Matchers {
 
   "TPC-H Q01" - {
 
-    // TODO: construct and issue TPC-H Query Q01 using the CoGaDB runtime
-
-    val examplePredicate = ast.And(Seq(
+    // TODO: construct and issue TPC-H Query Q01 using CoGaDB AST nodes
+    val tpchQ01 = ast.And(Seq(
       ast.ColCol(
         lhs = ast.AttrRef("lineitem", "order_id", "l_order_id"),
         rhs = ast.AttrRef("order", "id", "o_order_id"),
@@ -50,8 +49,8 @@ class JSerializerSpec extends FreeSpec with Matchers {
     ))
 
     "json serialization" in {
-      val exp = parse(readResourceFile("/tpch.Q1.json"))
-      val act = fold(JSerializer)(examplePredicate)
+      val exp = parse(readResourceFile("/tpch.Q1.json")) // TODO: paste the correct JSON in this file
+      val act = fold(JSerializer)(tpchQ01)
       act shouldEqual exp
     }
   }
