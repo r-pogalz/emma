@@ -57,6 +57,11 @@
         </dependency>
 
         <!-- CoGaDB-specific dependencies -->
+        <!-- JSON -->
+        <dependency>
+            <groupId>net.liftweb</groupId>
+            <artifactId>lift-json_${scala.tools.version}</artifactId>
+        </dependency>
 
         <!-- Test -->
         <dependency>

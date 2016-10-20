@@ -131,6 +131,7 @@
         <reflections.version>0.9.9</reflections.version>
         <scala.graph-core.version>1.9.0</scala.graph-core.version>
         <scala-arm.version>1.4</scala-arm.version>
+        <lift-json.version>3.0-RC4</lift-json.version>
 
         <!-- Test configuration -->
         <excludedSurefireGroups>eu.stratosphere.emma.testutil.ExampleTest</excludedSurefireGroups>
@@ -339,6 +340,13 @@
                 <groupId>com.assembla.scala-incubator</groupId>
                 <artifactId>graph-core_${scala.tools.version}</artifactId>
                 <version>${scala.graph-core.version}</version>
+            </dependency>
+
+            <!-- JSON -->
+            <dependency>
+                <groupId>net.liftweb</groupId>
+                <artifactId>lift-json_${scala.tools.version}</artifactId>
+                <version>${lift-json.version}</version>
             </dependency>
 
             <!-- Auto-Resource Management -->
