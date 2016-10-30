@@ -28,11 +28,13 @@ object ast {
 
   //@formatter:off
   sealed trait Op extends Node
-  case class Sort(/* TODO */) extends Op
-  case class GroupBy(/* TODO */) extends Op
-  case class Selection(predicate: Predicate) extends Op
+  case class Sort(sortCols: Seq[SortCol]) extends Op
+  case class GroupBy(groupCols: Seq[GroupCol], aggSpec: Seq[AggSpec]) extends Op
+  case class Selection(predicate: Seq[Predicate]) extends Op
   case class TableScan(tableName: String, version: Int = 1) extends Op
   // TODO: define basic operators
+  case class Projection(attRef: Seq[AttrRef]) extends Op
+  case class MapUdf(mapUdfOutAttr: Seq[MapUdfOutAttr], mapUdfCode: Seq[MapUdfCode]) extends Op
   //@formatter:on
 
   // ---------------------------------------------------------------------------
@@ -52,6 +54,12 @@ object ast {
   // ---------------------------------------------------------------------------
 
   case class AttrRef(table: String, col: String, result: String, version: Short = 1) extends Node
+  //TODO
+  case class MapUdfCode(code: String) extends Node
+  case class MapUdfOutAttr(attType: String, attName: String, intVarName: String) extends Node
+  case class AggSpec(aggFunc: String, attrRef: AttrRef) extends Node
+  case class GroupCol(attrRef: AttrRef) extends Node
+  case class SortCol(table: String, col: String, result: String, version: Short = 1, order: String) extends Node
 
   //@formatter:off
   sealed trait Const extends Node {
@@ -62,6 +70,24 @@ object ast {
     override type A = Int
   }
   // TODO (FloatConst, VarcharConst, ...)
+  case class FloatConst(value: Float) extends Const {
+    override type A = Float
+  }
+  case class VarCharConst(value: String) extends Const {
+    override type A = String
+  }
+  case class DoubleConst(value: Double) extends Const {
+    override type A = Double
+  }
+  case class CharConst(value: Char) extends Const {
+    override type A = Char
+  }
+  case class DateConst(value: String) extends Const {
+    override type A = String
+  }
+  case class BoolConst(value: String) extends Const {
+    override type A = String
+  }
   //@formatter:on
 
   // ---------------------------------------------------------------------------

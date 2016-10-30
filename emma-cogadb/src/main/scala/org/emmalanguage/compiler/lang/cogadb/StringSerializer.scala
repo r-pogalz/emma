@@ -15,7 +15,7 @@
  */
 package org.emmalanguage
 package compiler.lang.cogadb
-
+/*
 object StringSerializer extends Algebra[String] {
 
   // -------------------------------------------------------------------------
@@ -66,3 +66,4 @@ object StringSerializer extends Algebra[String] {
   override def LessEqual: String =
     "<="
 }
+*/

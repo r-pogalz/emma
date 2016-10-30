@@ -16,6 +16,9 @@
 package org.emmalanguage
 package compiler.lang.cogadb
 
+import org.emmalanguage.compiler.lang.cogadb.ast.AggSpec
+import org.emmalanguage.compiler.lang.cogadb.ast.MapUdfOutAttr
+
 import net.liftweb.json._
 
 import scala.language.implicitConversions
@@ -30,6 +33,72 @@ object JSerializer extends Algebra[JValue] {
 
   implicit def intToJInt(v: Int): JInt =
     JInt(v)
+
+  implicit def floatToJFloat(v: Float): JDouble =
+    JDouble(v)
+
+  implicit def floatToJDouble(v: Double): JDouble =
+    JDouble(v)
+
+  implicit def CharToJChar(v: Char): JString =
+    JString(v.toString)
+
+
+  // -------------------------------------------------------------------------
+  // Operators
+  // -------------------------------------------------------------------------
+
+  override def Sort(sortCols: Seq[JValue]): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "SORT_BY"),
+      JField("SORTING_COLUMNS", JArray(sortCols.toList.map(sortCol => JObject(
+        JField("", sortCol)
+      ))))
+    )
+
+  override def GroupBy(groupCols: Seq[JValue],aggSpec: Seq[JValue]): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "GENERIC_GROUPBY"),
+      JField("GROUPING_COLUMNS", JArray(groupCols.toList.map(groupCol => JObject(
+        JField("",groupCol)
+      )))),
+      JField("AGGREGATION_SPECIFICATION", JArray(aggSpec.toList.map(a => JObject(
+        JField("",a)
+      ))))
+    )
+
+  override def Selection(predicate: Seq[JValue]): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "GENERIC_SELECTION"),
+      JField("GROUPING_COLUMNS", JArray(predicate.toList.map(p => JObject(
+        JField("",p)
+      ))))
+    )
+
+  override def TableScan(tableName: String, version: Int): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "TABLE_SCAN"),
+      JField("TABLE_NAME", tableName),
+      JField("VERSION", version)
+  )
+
+  override def Projection(attrRef: Seq[JValue]): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "PROJECTION"),
+      JField("ATTRIBUTES", JArray(attrRef.toList.map(a => JObject(
+        JField("",a)
+      ))
+
+      ))
+    )
+  override def MapUdf(mapUdfOutAttr: Seq[JValue],mapUdfCode: Seq[JValue]): JValue =
+    JObject(
+      JField("OPERATOR_NAME", "MAP_UDF"),
+      JField("MAP_UDF_OUTPUT_ATTRIBUTES", JArray(mapUdfOutAttr.toList.map(a => JObject(
+        JField("", a)
+      ))))
+    )
+
 
   // -------------------------------------------------------------------------
   // Predicates
@@ -70,6 +139,32 @@ object JSerializer extends Algebra[JValue] {
   // -------------------------------------------------------------------------
   // Leafs
   // -------------------------------------------------------------------------
+  //case class MapUdfCode(code: String) extends Node
+  //case class MapUdfOutAttr(attType: String, attName: String, intVarName: String) extends Node
+  /*case class AggSpecAggFunc: String, attrRef: AttrRef) extends Node
+  case class GroupCol(attrRef: AttrRef) extends Node
+  case class SortCol(table: String, col: String, result: String, version: Short = 1, order: String) extends Node*/
+
+  override def MapUdfCode(code: String): JValue =
+    JObject(
+      JField("MAP_UDF_CODE", JArray(code.toList.map( c => JObject(
+        JField("",c))
+      )))
+    )
+
+  override def MapUdfOutAttr(attType: String, attName: String, intVarName: String): JValue =
+    JObject(
+      JField("ATTRIBUTE_TYPE", attType),
+      JField("ATTRIBUTE_NAME", attName),
+      JField("INTERNAL_VARIABLE_NAME", intVarName)
+    )
+  def AggSpec(aggFunc: String, attrRef: JValue): JValue =
+    JObject(
+      JField("AGGREGATION_SPECIFICATION", aggFunc)
+    )
+
+  def GroupCol(attrRef: JValue): JValue = ???
+  def SortCol(table: String, col: String, result: String, version: Short, order: String): JValue = ???
 
   override def AttrRef(table: String, col: String, result: String, version: Short): JValue =
     JObject(
@@ -84,6 +179,37 @@ object JSerializer extends Algebra[JValue] {
       JField("CONSTANT_VALUE", value),
       JField("CONSTANT_TYPE", "INT")
     )
+  def FloatConst(value: Float): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "FLOAT")
+    )
+  def VarCharConst(value: String): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "VARCHAR")
+    )
+  def DoubleConst(value: Double): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "VARCHAR")
+    )
+  def CharConst(value: Char): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "CHAR")
+    )
+  def DateConst(value: String): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "DATE")
+    )
+  def BoolConst(value: String): JValue =
+    JObject(
+      JField("CONSTANT_VALUE", value),
+      JField("CONSTANT_TYPE", "BOOLEAN")
+    )
+
 
   // -------------------------------------------------------------------------
   // Comparators

@@ -47,10 +47,20 @@ class JSerializerSpec extends FreeSpec with Matchers {
         cmp = ast.Unequal
       )
     ))
+/*    val tpchQ01 = ast.GroupBy(Seq(
+      ast.GroupCol(
+        attrRef = ast.AttrRef("LINEITEM", "L_RETURNFLAG", "L_RETURNFLAG"),
+        aggSpec = ast.AggSpec("SUM", Seq(
+          ast.AttrRef("LINEITEM", "L_QUANTITY", "L_QUANTITY")
+        ))
+      )
+    ))*/
 
     "json serialization" in {
       val exp = parse(readResourceFile("/tpch.Q1.json")) // TODO: paste the correct JSON in this file
       val act = fold(JSerializer)(tpchQ01)
+      println(exp)
+      println(act)
       act shouldEqual exp
     }
   }

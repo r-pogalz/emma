@@ -16,15 +16,24 @@
 package org.emmalanguage
 package compiler.lang.cogadb
 
+import org.emmalanguage.compiler.lang.cogadb.ast.AggSpec
+
 /** CogaDB AST algebra. */
 trait Algebra[A] {
 
   // -------------------------------------------------------------------------
-  // Predicates
+  // Operators
   // -------------------------------------------------------------------------
 
   // TODO ...
+  def Sort(sortCols: Seq[A]): A
+  def GroupBy(groupCols: Seq[A],aggSpec: Seq[A]): A
+  def Selection(predicate: Seq[A]): A
+  def TableScan(tableName: String, version: Int = 1): A
+  def Projection(attRef: Seq[A]): A
+  def MapUdf(mapUdfOutAttr: Seq[A], mapUdfCode: Seq[A] ): A
 
+  //@formatter:on
   // -------------------------------------------------------------------------
   // Predicates
   // -------------------------------------------------------------------------
@@ -42,7 +51,23 @@ trait Algebra[A] {
 
   def AttrRef(table: String, col: String, result: String, version: Short): A
 
+  //TODO
+  def MapUdfCode(code: String): A
+  def MapUdfOutAttr(attType: String, attName: String, intVarName: String): A
+  def AggSpec(aggFunc: String, attrRef: A): A
+  def GroupCol(attrRef: A): A
+  def SortCol(table: String, col: String, result: String, version: Short = 1, order: String): A
+
+
   def IntConst(value: Int): A
+
+  //TODO
+  def FloatConst(value: Float): A
+  def VarCharConst(value: String): A
+  def DoubleConst(value: Double): A
+  def CharConst(value: Char): A
+  def DateConst(value: String): A
+  def BoolConst(value: String): A
 
   // -------------------------------------------------------------------------
   // Comparators

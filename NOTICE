@@ -183,6 +183,7 @@ This project includes:
   Kryo Shaded under New BSD License
   laws under MIT
   leveldbjni-all under The BSD 3-Clause License
+  Lift Json under Apache License, Version 2.0
   LZ4 and xxHash under The Apache Software License, Version 2.0
   machinist under MIT
   macros under Apache License
