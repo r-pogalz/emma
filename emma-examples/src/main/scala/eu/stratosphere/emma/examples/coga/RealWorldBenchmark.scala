@@ -9,22 +9,21 @@ import org.apache.commons.lang.time.DateUtils
 
 import scala.collection.mutable.ListBuffer
 
-object BenchmarkTPCH {
+object RealWorldBenchmark {
 
   val usage =
     """
-    Usage: [--warm-up num] [--rounds num] [--num-threads num] [--debug true] path
+    Usage: [--warm-up num] [--rounds num] [--debug true] path
     """
 
-  val defaultWarmup = 10
-  val defaultRounds = 20
+  val defaultWarmup = 5
+  val defaultRounds = 10
   val defaultNumThreads = 1
 
   var debug = false
 
   val warmupSym = 'warmup
   val roundsSym = 'rounds
-  val numThreadsSym = 'numthreads
   val debugSym = 'debug
   val pathSym = 'path
 
@@ -44,8 +43,6 @@ object BenchmarkTPCH {
           toOptionMap(map ++ Map(warmupSym -> value.toInt), tail)
         case "--rounds" :: value :: tail =>
           toOptionMap(map ++ Map(roundsSym -> value.toInt), tail)
-        case "--num-threads" :: value :: tail =>
-          toOptionMap(map ++ Map(numThreadsSym -> value.toInt), tail)
         case "--debug" :: value :: tail =>
           toOptionMap(map ++ Map(debugSym -> value.toBoolean), tail)
         case string :: opt2 :: tail if isSwitch(opt2) =>
@@ -70,14 +67,8 @@ object BenchmarkTPCH {
     //profile query01 from TPC-H
     profile(warmupRnds, measureRnds, query01(lineitems), "TPC-H Query01")
 
-    System.gc()
-    System.runFinalization()
-
     //profile query06 from TPC-H
     profile(warmupRnds, measureRnds, query06(lineitems), "TPC-H Query06")
-
-    System.gc()
-    System.runFinalization()
 
     var customers = read(s"$tblPath/customer.tbl", new CSVInputFormat[Customer]('|'))
     println("read customer tbl successfully")
@@ -87,9 +78,6 @@ object BenchmarkTPCH {
 
     //profile query03 from TPC-H
     profile(warmupRnds, measureRnds, query03(customers, orders, lineitems), "TPC-H Query03")
-
-    System.gc()
-    System.runFinalization()
 
     var suppliers = read(s"$tblPath/supplier.tbl", new CSVInputFormat[Supplier]('|'))
     println("read supplier tbl successfully")
@@ -139,6 +127,10 @@ object BenchmarkTPCH {
 
     val durationsBuffer = Seq.newBuilder[Long]
     for (i <- 1 to (warmupRounds + times)) {
+      //call gc
+      System.gc()
+      System.runFinalization()
+      
       //actual algorithm to profile
       val t0 = System.nanoTime()
       val res = query
@@ -153,12 +145,13 @@ object BenchmarkTPCH {
         //      computed.foreach(println)
         println(s"Execution time(Round ${i - warmupRounds}): ${duration}ms")
       }
-
-      //call gc
-      System.gc()
-      System.runFinalization()
+      
     }
-    val durations = durationsBuffer.result()
+    
+    //remove min and max value from time values
+    var durations = durationsBuffer.result()
+    durations = durations diff List(durations.min)
+    durations = durations diff List(durations.max)
 
     println(s"===========================SUMMARY==============================")
     val n = durations.size
@@ -355,9 +348,8 @@ object BenchmarkTPCH {
     res.toList
   }
 
-  def group[A, K](vals: Seq[A], k: (A) => K): Seq[Group[K, Seq[A]]] = {
+  def group[A, K](vals: Seq[A], k: (A) => K): Seq[Group[K, Seq[A]]] =
     vals.groupBy(k).toSeq.map { case (k, v) => Group(k, v) }
-  }
 
   /**
     * Original query:

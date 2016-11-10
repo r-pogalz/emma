@@ -10,6 +10,8 @@ import scala.reflect.runtime.universe._
 object CoGaUDFCompiler {
 
   private var outputId = 0
+  
+  def lastOutputId = outputId
 
   private def nextOutputIdentifier(): String = {
     outputId += 1
@@ -17,7 +19,7 @@ object CoGaUDFCompiler {
   }
 
   class UDFClosure {
-    val inputMapping = mutable.Map.empty[String, String]
+    val symbolTable = mutable.Map.empty[String, String]
   }
 
   case class CoGaUDF(udf: String,
@@ -26,10 +28,11 @@ object CoGaUDFCompiler {
   case class CoGaUDFOutput(identifier: String,
                            tpe: Type)
 
-  def compile(tree: Tree)
-             (implicit closure: UDFClosure): CoGaUDF = {
+  def compile(tree: Tree, symbolTable: UDFClosure) : CoGaUDF = {
+    implicit val closure = symbolTable
     implicit val outputs = mutable.ListBuffer.empty[CoGaUDFOutput]
-    val compiledUDF = compileUDF(tree)
+    val compiledUDF = compileBody(tree, true)
+//    val compiledUDF = compileUDF(tree)
     new CoGaUDF(compiledUDF,
                 outputs.toList)
   }
@@ -78,7 +81,9 @@ object CoGaUDFCompiler {
                          (implicit closure: UDFClosure,
                           outputs: ListBuffer[CoGaUDFOutput]): String = {
     tree match {
-      case Block(stats, expr) => compileBlock(stats) + compileBody(expr, true)
+      case Function(vparams, body) => compileBody(body, potentialOutput)
+      case DefDef(mods, name, tparams, vparamss, tpt, rhs) => compileBody(rhs, potentialOutput)
+      case Block(stats, expr) => compileBlock(stats) + compileBody(expr, potentialOutput)
 
       case app@Apply(fun: Select, args: List[Tree]) => {
         if (potentialOutput) {
@@ -141,8 +146,8 @@ object CoGaUDFCompiler {
             val outputIde = nextOutputIdentifier()
             outputs += new CoGaUDFOutput(outputIde, ide.tpe)
             //if input parameter, otherwise local variable
-            if (closure.inputMapping isDefinedAt name.toString) {
-              val coGaColumn = closure.inputMapping(name.toString)
+            if (closure.symbolTable isDefinedAt name.toString) {
+              val coGaColumn = closure.symbolTable(name.toString)
               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), toCode(CoGaExpr.CoGaInputCol,
                                                                                             coGaColumn))
             } else {
@@ -155,7 +160,7 @@ object CoGaUDFCompiler {
                             .map { fieldIdentifier =>
                               val outputIde = nextOutputIdentifier()
                               outputs += new CoGaUDFOutput(outputIde, fieldIdentifier.typeSignature)
-                              val coGaColumn = closure.inputMapping(name.toString + "." +
+                              val coGaColumn = closure.symbolTable(name.toString + "." +
                                                                     fieldIdentifier.name.toString.trim)
                               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde),
                                      toCode(CoGaExpr.CoGaInputCol, coGaColumn))
@@ -244,8 +249,8 @@ object CoGaUDFCompiler {
       //        case _ => throw new IllegalArgumentException(
       //          s"Select with qualifier ${showRaw(qualifier)} and name ${name.toString} not supported")
       //      }
-      if (closure.inputMapping isDefinedAt sel.toString) {
-        val coGaColumn = closure.inputMapping(sel.toString)
+      if (closure.symbolTable isDefinedAt sel.toString) {
+        val coGaColumn = closure.symbolTable(sel.toString)
         toCode(CoGaExpr.CoGaInputCol, coGaColumn)
       } else {
         throw new IllegalArgumentException(s"No input mapping found for ${sel.toString()}")

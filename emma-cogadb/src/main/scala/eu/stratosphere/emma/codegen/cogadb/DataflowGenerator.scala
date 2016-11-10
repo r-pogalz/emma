@@ -362,17 +362,22 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     //    val anf = typeCheckAndANF(checked)
 
     //COGADB
-    //    try {
+//        try {
     //extract input params of UDF
-    val input = UDFParser.extractInputParams(mapFun)
-    implicit val udfClosure = new UDFClosure()
-    udfClosure.inputMapping += "cross$1._1.x" -> "cross$1_1.x"
-    udfClosure.inputMapping += "cross$1._1.y" -> "cross$1_1.y"
-    udfClosure.inputMapping += "cross$1._2.x" -> "cross$1_2.x"
-    udfClosure.inputMapping += "cross$1._2.y" -> "cross$1_2.y"
+    val input = CoGaUDFCompiler.extractInputParams(mapFun)
+    val udfClosure = new UDFClosure()
+    udfClosure.symbolTable += "cross$1._1.x" -> "cross$1_1.x"
+    udfClosure.symbolTable += "cross$1._1.y" -> "cross$1_1.y"
+    udfClosure.symbolTable += "cross$1._2.x" -> "cross$1_2.x"
+    udfClosure.symbolTable += "cross$1._2.y" -> "cross$1_2.y"
+    udfClosure.symbolTable += "left.v" -> "POINT.V"
+    udfClosure.symbolTable += "left.w" -> "POINT.W"
+    udfClosure.symbolTable += "left.x" -> "POINT.X"
+    udfClosure.symbolTable += "left.y" -> "POINT.Y"
+    udfClosure.symbolTable += "left.z" -> "POINT.Z"
 
     //CoGaDB UDF compilation
-    val coGaUDF = CoGaUDFCompiler.compile(mapFun)
+    val coGaUDF = CoGaUDFCompiler.compile(mapFun, udfClosure)
     println(coGaUDF.udf)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
@@ -388,9 +393,9 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
 
     executeOnCoGaDB(s"$sharedCoGaFolder/map_script.json")
     //    sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/map_script.json")
-    //    }catch{
-    //      case e: Exception => println("Warning: Could not fill json templates.")
-    //    }
+//        }catch{
+//          case e: Exception => println("Warning: Could not fill json templates.")
+//        }
 
     //Flink
     val mapUDF = ir.UDF(mapFun, mapFun.preciseType, tb)

@@ -1,34 +1,32 @@
-package eu.stratosphere.emma.examples.coga
-
 import java.io.{File, FileInputStream}
 import java.net.URI
-import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 import eu.stratosphere.emma.api.{CSVInputFormat, _}
-import org.apache.commons.lang.time.DateUtils
 
-import scala.collection.mutable.ListBuffer
+import scala.language.implicitConversions
+import scala.math.pow
 
 object MicroBenchmark {
 
   val usage =
     """
-    Usage: [--warm-up num] [--rounds num] [--num-threads num] [--debug true] path
+    Usage: [--warm-up num] [--rounds num] [--sf num] [--debug true] path
     """
 
-  val defaultWarmup = 10
-  val defaultRounds = 20
-  val defaultNumThreads = 1
+  val defaultWarmup = 5
+  val defaultRounds = 10
+  val defaultSf = 1
 
   var debug = false
 
   val warmupSym = 'warmup
   val roundsSym = 'rounds
-  val numThreadsSym = 'numthreads
+  val sfSym = 'sf
   val debugSym = 'debug
   val pathSym = 'path
+
+  var lineitemsSize = 0
 
   val confidenceCriticalValue = 2.325
 
@@ -46,8 +44,8 @@ object MicroBenchmark {
           toOptionMap(map ++ Map(warmupSym -> value.toInt), tail)
         case "--rounds" :: value :: tail =>
           toOptionMap(map ++ Map(roundsSym -> value.toInt), tail)
-        case "--num-threads" :: value :: tail =>
-          toOptionMap(map ++ Map(numThreadsSym -> value.toInt), tail)
+        case "--sf" :: value :: tail =>
+          toOptionMap(map ++ Map(sfSym -> value.toInt), tail)
         case "--debug" :: value :: tail =>
           toOptionMap(map ++ Map(debugSym -> value.toBoolean), tail)
         case string :: opt2 :: tail if isSwitch(opt2) =>
@@ -62,24 +60,30 @@ object MicroBenchmark {
 
     val warmupRnds: Int = options.getOrElse(warmupSym, defaultWarmup).asInstanceOf[Int]
     val measureRnds: Int = options.getOrElse(roundsSym, defaultRounds).asInstanceOf[Int]
+    val scaleFactor: Int = options.getOrElse(sfSym, defaultSf).asInstanceOf[Int]
     val tblPath: String = options
                           .getOrElse(pathSym, throw new IllegalArgumentException("No path to tbl files specified"))
                           .asInstanceOf[String]
 
     var lineitems = read(s"$tblPath/lineitem.tbl", new CSVInputFormat[Lineitem]('|'))
+    lineitemsSize = lineitems.size
     println("read lineitem tbl successfully")
 
-    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= 2000), "Filter 0.01")
+    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= scaleFactor * 2000),
+            "Filter 0.01")
 
-    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= 20000), "Filter 0.1")
+    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= scaleFactor * 20000),
+            "Filter 0.1")
 
-    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= 100000), "Filter 0.5")
+    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= scaleFactor * 100000),
+            "Filter 0.5")
 
-    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= 200000), "Filter 1.0")
-    
+    profile(warmupRnds, measureRnds, filterLineitem(lineitems, (l: Lineitem) => l.partKey <= scaleFactor * 200000),
+            "Filter 1.0")
+
     profile(warmupRnds, measureRnds, mapLineitem(lineitems, simpleComputation), "Simple Map")
-    
-    profile(warmupRnds, measureRnds, mapLineitem(lineitems, simpleComputation), "Complex Map")
+
+    profile(warmupRnds, measureRnds, mapLineitem(lineitems, murmurHash3), "MurmurHash3 Map")
   }
 
   def read[A](path: String, format: InputFormat[A]): Seq[A] = {
@@ -97,6 +101,10 @@ object MicroBenchmark {
 
     val durationsBuffer = Seq.newBuilder[Long]
     for (i <- 1 to (warmupRounds + times)) {
+      //call gc
+      System.gc()
+      System.runFinalization()
+      
       //actual algorithm to profile
       val t0 = System.nanoTime()
       val res = query
@@ -112,17 +120,18 @@ object MicroBenchmark {
         println(s"Execution time(Round ${i - warmupRounds}): ${duration}ms")
       }
 
-      //call gc
-      System.gc()
-      System.runFinalization()
     }
-    val durations = durationsBuffer.result()
+    
+    //remove min and max value from time values
+    var durations = durationsBuffer.result()
+    durations = durations diff List(durations.min)
+    durations = durations diff List(durations.max)
 
     println(s"===========================SUMMARY==============================")
     val n = durations.size
     val avg = durations.sum / n
-    val variance = durations.map(d => scala.math.pow(d - avg,
-                                                     2.0)).sum / n
+    val variance = durations.map(d => pow(d - avg,
+                                          2.0)).sum / n
     val deviation = scala.math.sqrt(variance)
     //calculate 99%-confidence-interval
     val confidenceBorder = confidenceCriticalValue * (deviation / scala.math.sqrt(n))
@@ -148,33 +157,42 @@ object MicroBenchmark {
 
   //computes disc price
   def simpleComputation(l: Lineitem) = l.extendedPrice * (1 - l.discount)
+  
 
-  //hash calculation by folding on a string (4 bytes at a time)
-  def complexComputation(l: Lineitem, m: Int) = {
-    val string = l.orderKey + l.partKey + l.suppKey + l.lineNumber + l.quantity + l.extendedPrice + l.discount +
-                 l.tax + l.returnFlag + l.lineStatus + l.shipDate + l.commitDate + l.receiptDate + l.shipInstruct +
-                 l.shipMode + l.comment
+  def murmurHash3(l: Lineitem) = {
+    val rot32 = (x: Int, y: Int) => (x * pow(2, y)).toInt | (x / pow(2, 32 - y)).toInt
+    val len = 4
+    val c1 = 0xcc9e2d51
+    val c2 = 0x1b873593
+    val r1 = 15
+    val r2 = 13
+    val m = 5
 
-    val intLength = string.length / 4
-    var sum = 0
-    for (j <- 1 to intLength) {
-      val c = string.substring(j * 4, (j * 4) + 4).toCharArray
-      var mult = 1
+    val n = 0xe6546b64
+
+    var hash = 0xdeadbeef //initialize with seed
+    val values = Seq(l.orderKey, l.partKey, l.suppKey, l.lineNumber)
+
+    var k = 0
+
+    values.foreach { v =>
+      k = v
+      k *= c1
+      k = rot32(k, r1)
+      k *= c2
       
-      for (k <- 1 to c.length) {
-        sum += c(k) * mult
-        mult *= 256
-      }
-    }
-
-    val c = string.substring(intLength * 4).toCharArray()
-    var mult = 1
-    for (k <- 1 to c.length) {
-      sum += c(k) * mult
-      mult *= 256
-    }
-
-    scala.math.abs(sum) % m
+      hash ^= k
+      hash = rot32(hash, r2) * m + n
+                   }
+    
+    hash ^= len
+    hash ^= (hash / pow(2, 16)).toInt
+    hash *= 0x85ebca6b
+    hash ^= (hash / pow(2, 13)).toInt
+    hash *= 0xc2b2ae35
+    hash ^= (hash / pow(2, 16)).toInt
+    
+    hash
   }
 
   def filterLineitem(lineitems: Seq[Lineitem], predicate: (Lineitem) => Boolean) = {
@@ -182,7 +200,7 @@ object MicroBenchmark {
 
     val result = lineitems.filter(predicate)
 
-    if (debug) println(s"Selection Results: $result")
+    if (debug) println(s"Selection Result Size: ${result.size}")
 
     result
   }
@@ -196,13 +214,13 @@ object MicroBenchmark {
                       extendedPrice: Double,
                       discount: Double,
                       tax: Double,
-                      returnFlag: String,
-                      lineStatus: String,
-                      shipDate: String,
-                      commitDate: String,
-                      receiptDate: String,
-                      shipInstruct: String,
-                      shipMode: String,
-                      comment: String)
+                      returnFlag: Char, //1
+                      lineStatus: Char, //1
+                      shipDate: String, //10
+                      commitDate: String, //10
+                      receiptDate: String, //10
+                      shipInstruct: String, //25
+                      shipMode: String, //10
+                      comment: String) //var 44
 
 }
