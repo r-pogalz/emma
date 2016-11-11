@@ -10,40 +10,28 @@ import scala.reflect.runtime.universe._
 object CoGaUDFCompiler {
 
   private var outputId = 0
-  
+
   def lastOutputId = outputId
 
-  private def nextOutputIdentifier(): String = {
-    outputId += 1
-    s"RES_$outputId"
-  }
+  case class CoGaUDFOutput(identifier: String, tpe: Type)
 
-  class UDFClosure {
-    val symbolTable = mutable.Map.empty[String, String]
-  }
-
-  case class CoGaUDF(udf: String,
-                     output: List[CoGaUDFOutput])
-
-  case class CoGaUDFOutput(identifier: String,
-                           tpe: Type)
-
-  def compile(tree: Tree, symbolTable: UDFClosure) : CoGaUDF = {
+  def compile(udf: ScalaUDF, symbolTable: UDFClosure): CoGaUDF = {
     implicit val closure = symbolTable
     implicit val outputs = mutable.ListBuffer.empty[CoGaUDFOutput]
-    val compiledUDF = compileBody(tree, true)
-//    val compiledUDF = compileUDF(tree)
-    new CoGaUDF(compiledUDF,
-                outputs.toList)
+    udf match {
+      case ScalaMapUDF(ast) => CoGaUDF(compileBody(ast, true), outputs.result())
+      case ScalaFilterUDF(ast) => throw new IllegalArgumentException("Not implemented yet")
+    }
   }
 
+  @deprecated
   def extractInputParams(tree: Tree): List[ValDef] = {
     tree match {
       case fun@Function(_,
-                        body: Function) => {
+      body: Function) => {
         body match {
           case Function(vparams,
-                        _) => {
+          _) => {
             vparams
           }
           case _ => throw new IllegalArgumentException(s"No UDF found: ${showRaw(tree)}")
@@ -53,21 +41,22 @@ object CoGaUDFCompiler {
     }
   }
 
+  @deprecated
   private def compileUDF(tree: Tree)
-                        (implicit closure: UDFClosure,
-                         outputs: ListBuffer[CoGaUDFOutput]): String = {
+    (implicit closure: UDFClosure,
+      outputs: ListBuffer[CoGaUDFOutput]): String = {
     println("----------------- Raw tree ---------------------")
     println(showRaw(tree))
 
     tree match {
       case fun@Function(_,
-                        body: Function) => {
+      body: Function) => {
         body match {
           case Function(vparams,
-                        body) => {
+          body) => {
             //            val context = InputTypeMapper.map(vparams)
             compileBody(body,
-                        true)
+              true)
           }
           case _ => throw new IllegalArgumentException(s"No UDF found: ${showRaw(tree)}")
         }
@@ -76,10 +65,15 @@ object CoGaUDFCompiler {
     }
   }
 
+  private def nextOutputIdentifier(): String = {
+    outputId += 1
+    s"RES_$outputId"
+  }
+
   private def compileBody(tree: Tree,
-                          potentialOutput: Boolean)
-                         (implicit closure: UDFClosure,
-                          outputs: ListBuffer[CoGaUDFOutput]): String = {
+    potentialOutput: Boolean)
+    (implicit closure: UDFClosure,
+      outputs: ListBuffer[CoGaUDFOutput]): String = {
     tree match {
       case Function(vparams, body) => compileBody(body, potentialOutput)
       case DefDef(mods, name, tparams, vparamss, tpt, rhs) => compileBody(rhs, potentialOutput)
@@ -149,7 +143,7 @@ object CoGaUDFCompiler {
             if (closure.symbolTable isDefinedAt name.toString) {
               val coGaColumn = closure.symbolTable(name.toString)
               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), toCode(CoGaExpr.CoGaInputCol,
-                                                                                            coGaColumn))
+                coGaColumn))
             } else {
               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde), name.toString)
             }
@@ -161,10 +155,10 @@ object CoGaUDFCompiler {
                               val outputIde = nextOutputIdentifier()
                               outputs += new CoGaUDFOutput(outputIde, fieldIdentifier.typeSignature)
                               val coGaColumn = closure.symbolTable(name.toString + "." +
-                                                                    fieldIdentifier.name.toString.trim)
+                                fieldIdentifier.name.toString.trim)
                               toCode(CoGaExpr.Assignment, toCode(CoGaExpr.CoGaOutputCol, outputIde),
-                                     toCode(CoGaExpr.CoGaInputCol, coGaColumn))
-                                 }
+                                toCode(CoGaExpr.CoGaInputCol, coGaColumn))
+                            }
             stmtBlock.mkString
           }
         } else {
@@ -183,7 +177,7 @@ object CoGaUDFCompiler {
   }
 
   private def compileBlock(trees: List[Tree])
-                          (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
+    (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (trees.isEmpty) {
       ""
     } else {
@@ -210,18 +204,18 @@ object CoGaUDFCompiler {
   //  }
 
   private def compileApply(fun: Select, args: List[Tree])
-                        (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
+    (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (fun.name.toString.startsWith("$")) {
       args.size match {
         case 1 => toCode(CoGaExpr.BinaryOperation, BOperator.fromScalaOp(fun, fun.tpe.finalResultType.toString),
-                         compileExpr(fun.qualifier), compileExpr(args.head))
+          compileExpr(fun.qualifier), compileExpr(args.head))
         case _ => throw new IllegalArgumentException(s"Apply with args size not supported: ${args.size}")
       }
     } else {
       args.size match {
         case 1 => toCode(CoGaExpr.UnaryOperation, UOperator.fromScalaOp(fun), compileExpr(args(0)))
         case 2 => toCode(CoGaExpr.BinaryOperation, BOperator.fromScalaOp(fun, fun.tpe.finalResultType.toString),
-                         compileExpr(args(0)), compileExpr(args(1)))
+          compileExpr(args(0)), compileExpr(args(1)))
         case _ => throw new IllegalArgumentException(s"Apply with args size ${args.size} for function${
           fun.name.toString
         } not supported.")
@@ -266,5 +260,18 @@ object CoGaUDFCompiler {
 
   private def generateConst(lit: Literal): String =
     toCode(CoGaExpr.Const, lit.value.tpe.toString, lit.value.value.toString)
+
+
+  sealed abstract class ScalaUDF(ast: Tree)
+
+  case class ScalaMapUDF(ast: Tree) extends ScalaUDF(ast)
+
+  case class ScalaFilterUDF(ast: Tree) extends ScalaUDF(ast)
+
+  class UDFClosure {
+    val symbolTable = mutable.Map.empty[String, String]
+  }
+
+  case class CoGaUDF(udf: String, output: Seq[CoGaUDFOutput])
 
 }

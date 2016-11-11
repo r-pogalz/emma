@@ -377,7 +377,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     udfClosure.symbolTable += "left.z" -> "POINT.Z"
 
     //CoGaDB UDF compilation
-    val coGaUDF = CoGaUDFCompiler.compile(mapFun, udfClosure)
+    val coGaUDF = CoGaUDFCompiler.compile(CoGaUDFCompiler.ScalaMapUDF(mapFun), udfClosure)
     println(coGaUDF.udf)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
