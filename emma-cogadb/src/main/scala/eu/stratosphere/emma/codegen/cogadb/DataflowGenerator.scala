@@ -8,7 +8,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.UUID
 
 import eu.stratosphere.emma.api.{CSVInputFormat, CSVOutputFormat, ParallelizedDataBag, TextInputFormat}
-import eu.stratosphere.emma.codegen.cogadb.CoGaUDFCompiler.UDFClosure
+import eu.stratosphere.emma.codegen.cogadb.UDFCodeGenerator.UDFClosure
 import eu.stratosphere.emma.codegen.utils.DataflowCompiler
 import eu.stratosphere.emma.ir
 import eu.stratosphere.emma.macros.RuntimeUtil
@@ -364,7 +364,6 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     //COGADB
 //        try {
     //extract input params of UDF
-    val input = CoGaUDFCompiler.extractInputParams(mapFun)
     val udfClosure = new UDFClosure()
     udfClosure.symbolTable += "cross$1._1.x" -> "cross$1_1.x"
     udfClosure.symbolTable += "cross$1._1.y" -> "cross$1_1.y"
@@ -377,7 +376,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     udfClosure.symbolTable += "left.z" -> "POINT.Z"
 
     //CoGaDB UDF compilation
-    val coGaUDF = CoGaUDFCompiler.compile(CoGaUDFCompiler.ScalaMapUDF(mapFun), udfClosure)
+    val coGaUDF = UDFCodeGenerator.generateFor(UDFCodeGenerator.MapUDF(mapFun), udfClosure)
     println(coGaUDF.udf)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
