@@ -2,13 +2,14 @@ package eu.stratosphere.emma.codegen.cogadb
 
 import scala.reflect.runtime.universe._
 
-trait AnnotatedC extends UDTHelper {
+trait AnnotatedC {
   
   private val supportedUnaryMethods = Map(
     TermName("toDouble") -> "(double)",
     TermName("toFloat") -> "(float)",
     TermName("toInt") -> "(int32_t)",
-    TermName("toLong") -> "(int64_t)")
+    TermName("toLong") -> "(int64_t)"
+  )
 
   private val supportedBinaryMethods = Map(
     TermName("$plus") -> '+,
@@ -16,7 +17,11 @@ trait AnnotatedC extends UDTHelper {
     TermName("$times") -> '*,
     TermName("$div") -> '/,
 //    TermName("$up") -> '^,
-    TermName("$eq$eq") -> '==
+    TermName("$eq$eq") -> '==,
+    TermName("$less") -> '<,
+    TermName("$less$eq") -> '<=,
+    TermName("$greater") -> '>,
+    TermName("$greater$eq") -> '>=
   )
   
   private val supportedLibraries = Seq(
@@ -34,30 +39,32 @@ trait AnnotatedC extends UDTHelper {
   
   def isInstantiation(name: Name): Boolean = name == TermName("apply")
 
-  def Const(tpe: Type, const: String): String =
-    if (tpe == typeOf[String]) "\""+ const +"\"" else if (tpe == typeOf[Char]) "\'" + const + "\'" else const
+  def Const(const: Constant): String =
+    if (const.tpe == typeOf[String]) "\""+ const.value +"\""
+    else if (const.tpe == typeOf[Char]) "\'" + const.value + "\'"
+    else s"${const.value}"
 
-  def LocalVar(v: String): String = v
+  def LocalVar(name: Name): String = s"$name"
   
-  def VarDef(tpe: TypeName, v: String): String = s"$tpe $v"
+  def VarDef(tpe: Name, v: Name): String = s"$tpe $v"
   
   def InputCol(tableCol: String): String = s"#$tableCol#"
   
-  def OutputCol(col: String): String = s"#<OUT>.$col#"
+  def OutputCol(col: TypeName): String = s"#<OUT>.$col#"
   
-  def UnaryOp(op: TermName, arg: String): String = supportedUnaryMethods get op match {
+  def NoOp: String = ""
+  
+  def UnaryOp(op: Name, arg: String): String = supportedUnaryMethods get op.toTermName match {
     case Some(o) => s"$o($arg)"
     case None => s"$op($arg)"
   }
   
-  def BinaryOp(op: TermName, arg1: String, arg2: String): String = supportedBinaryMethods get op match {
+  def BinaryOp(op: Name, arg1: String, arg2: String): String = supportedBinaryMethods get op.toTermName match {
     case Some(o) => s"($arg1${o.name}$arg2)"
     case None => s"$op($arg1,$arg2)"
   }
   
   def AssignmentStmt(lhs: String, rhs: String): String = s"$lhs=$rhs;"
-  
-  def IfThenStmt(cond: String, thenp: String): String = s"if($cond){$thenp}"
   
   def IfThenElseStmt(cond: String, thenp: String, elsep: String): String = s"if($cond){$thenp}else{$elsep}"
   

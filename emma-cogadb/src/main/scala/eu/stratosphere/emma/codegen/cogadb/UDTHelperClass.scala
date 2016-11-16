@@ -3,11 +3,11 @@ package eu.stratosphere.emma.codegen.cogadb
 import scala.language.implicitConversions
 import scala.reflect.runtime.universe._
 
-trait UDTHelper {
+trait TypeHelper {
   
-  implicit def typeWrapper(t: Type) = new UDTHelperClass(t)
+  implicit def typeWrapper(t: Type) = new TypeHelperClass(t)
 
-  final class UDTHelperClass(t: Type) {
+  final class TypeHelperClass(t: Type) {
 
     private val scalaToC = Map(
       typeOf[Short] -> TypeName("int16_t"),
@@ -25,7 +25,7 @@ trait UDTHelper {
     
     def isValidUDT: Boolean = ???
 
-    def toCPrimitive: TypeName = scalaToC.get(t) match {
+    def toCPrimitive: Name = scalaToC.get(t) match {
       case Some(value) => value
       case None => throw new IllegalArgumentException(s"No existing primitive C type for $t.")
     }

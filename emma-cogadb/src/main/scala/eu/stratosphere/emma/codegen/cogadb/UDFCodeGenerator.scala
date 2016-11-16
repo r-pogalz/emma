@@ -5,7 +5,7 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe._
 import internal.reificationSupport._
 
-object UDFCodeGenerator extends AnnotatedC {
+object UDFCodeGenerator extends AnnotatedC with TypeHelper {
 
   sealed abstract class UDF(ast: Tree)
 
@@ -39,93 +39,88 @@ object UDFCodeGenerator extends AnnotatedC {
     }
   }
 
-  private def nextOutputIdentifier: TypeName = freshTypeName("RES_")
+  private def newUDFOutput(tpe: Type)(implicit outputs: ListBuffer[CoGaUDFOutput]): TypeName = {
+    val name = freshTypeName("RES_")
+    outputs += new CoGaUDFOutput(name, tpe)
+    name
+  }
 
-  private def visit(tree: Tree, isFinalStmt: Boolean = false)(implicit closure: UDFClosure,
+  private def visit(tree: Tree, isPotentialOut: Boolean = false)(implicit closure: UDFClosure,
     outputs: ListBuffer[CoGaUDFOutput]): String = {
     tree match {
       case Function(_, body) =>
-        visit(body, isFinalStmt)
+        visit(body, isPotentialOut)
 
       case DefDef(_, _, _, _, _, rhs) =>
-        visit(rhs, isFinalStmt)
+        visit(rhs, isPotentialOut)
 
       case Block(Nil, expr) =>
-        visit(expr, isFinalStmt)
+        visit(expr, isPotentialOut)
 
-      case Block(xs :+ x, expr) =>
-        xs.flatMap(visit(_)).mkString + visit(x) + visit(expr, true)
+      case Block(xs, expr) =>
+        xs.flatMap(visit(_)).mkString + visit(expr, isPotentialOut)
 
       case Apply(typeApply: TypeApply, args: List[Tree]) =>
-        generateForTypeApply(typeApply, args, isFinalStmt)
+        generateForTypeApply(typeApply, args, isPotentialOut)
 
       case app@Apply(sel: Select, args: List[Tree]) =>
-        generateForSelectApply(app, sel, args, isFinalStmt)
+        generateForSelectApply(app, sel, args, isPotentialOut)
 
       case sel: Select =>
-        generateForSelect(sel)
+        generateForSelect(sel, isPotentialOut)
 
       case Assign(lhs: Ident, rhs) =>
-        AssignmentStmt(LocalVar(lhs.name.toString), visit(rhs))
+        AssignmentStmt(LocalVar(lhs.name), visit(rhs))
 
       case ValDef(mods, name, tpt: TypeTree, rhs) =>
-        AssignmentStmt(VarDef(tpt.tpe.toCPrimitive, name.toString), visit(rhs))
+        AssignmentStmt(VarDef(tpt.tpe.toCPrimitive, name), visit(rhs))
 
-      case If(cond, thenp, elsep: Literal) =>
-        IfThenElseStmt(visit(cond), visit(thenp), visit(elsep))
-
-      case If(cond, thenp, _) =>
-        IfThenStmt(visit(cond), visit(thenp))
+      //TODO rewrite tree for if then else
+      case If(cond, thenp, elsep) =>
+        IfThenElseStmt(visit(cond), visit(thenp, isPotentialOut), visit(elsep, isPotentialOut))
 
       case ide: Ident =>
-        generateForIdent(ide, isFinalStmt)
+        generateForIdent(ide, isPotentialOut)
 
       case lit@Literal(_) =>
-        generateForLiteral(lit, isFinalStmt)
+        generateForLiteral(lit, isPotentialOut)
 
       case _ => throw new IllegalArgumentException(s"Code generation for tree type not supported: ${showRaw(tree)}")
     }
   }
 
-  private def generateForLiteral(lit: Literal, isFinalSmt: Boolean)
+  private def generateForLiteral(lit: Literal, isFinalStmt: Boolean)
     (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
-    if (isFinalSmt) {
-      val outputIde = nextOutputIdentifier
-      outputs += new CoGaUDFOutput(outputIde, lit.tpe)
-      AssignmentStmt(OutputCol(outputIde.toString), Const(lit.value.tpe, lit.value.value.toString))
+    if (isFinalStmt) {
+      AssignmentStmt(OutputCol(newUDFOutput(lit.tpe)), Const(lit.value))
     } else {
-      Const(lit.value.tpe, lit.value.value.toString)
+      Const(lit.value)
     }
   }
 
-  private def generateForIdent(ide: Ident, isFinalSmt: Boolean)
+  private def generateForIdent(ide: Ident, isFinalStmt: Boolean)
     (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
-    if (isFinalSmt) {
+    if (isFinalStmt) {
       if (ide.tpe.isScalaBasicType) {
-
-        val outputIde = nextOutputIdentifier
-        outputs += new CoGaUDFOutput(outputIde, ide.tpe)
         //if input parameter, otherwise local variable
         if (closure.symbolTable isDefinedAt ide.name.toString) {
           val tableCol = closure.symbolTable(ide.name.toString)
-          AssignmentStmt(OutputCol(outputIde.toString), InputCol(tableCol))
+          AssignmentStmt(OutputCol(newUDFOutput(ide.tpe)), InputCol(tableCol))
         } else {
-          AssignmentStmt(OutputCol(outputIde.toString), ide.name.toString)
+          AssignmentStmt(OutputCol(newUDFOutput(ide.tpe)), ide.name.toString)
         }
       } else {
         //currently assume that only input parameter can be complex (UDT)
         //i.e. instantiation of complex type not allowed except as final statement
         ide.tpe.members.filter(!_.isMethod).toList.reverse
         .map { fieldIdentifier =>
-          val outputIde = nextOutputIdentifier
-          outputs += new CoGaUDFOutput(outputIde, fieldIdentifier.typeSignature)
           val coGaColumn = closure.symbolTable(ide.name.toString + "." +
             fieldIdentifier.name.toString.trim)
-          AssignmentStmt(OutputCol(outputIde.toString), InputCol(coGaColumn))
+          AssignmentStmt(OutputCol(newUDFOutput(ide.tpe)), InputCol(coGaColumn))
         }.mkString
       }
     } else {
-      LocalVar(ide.name.toString)
+      LocalVar(ide.name)
     }
   }
 
@@ -134,9 +129,7 @@ object UDFCodeGenerator extends AnnotatedC {
     //initialization of a Tuple type
     if (isFinalSmt) {
       args.map(arg => {
-        val outputIde = nextOutputIdentifier
-        outputs += new CoGaUDFOutput(outputIde, arg.tpe)
-        AssignmentStmt(OutputCol(outputIde.toString), visit(arg))
+        AssignmentStmt(OutputCol(newUDFOutput(arg.tpe)), visit(arg))
       }).mkString
     } else {
       throw new IllegalArgumentException(s"Instantiation of ${typeApply.toString()} not allowed at this place.")
@@ -149,14 +142,10 @@ object UDFCodeGenerator extends AnnotatedC {
       if (isInstantiation(sel.name)) {
         //initialization of a complex type
         args.map(arg => {
-          val outputIde = nextOutputIdentifier
-          outputs += new CoGaUDFOutput(outputIde, arg.tpe)
-          AssignmentStmt(OutputCol(outputIde.toString), visit(arg))
+          AssignmentStmt(OutputCol(newUDFOutput(arg.tpe)), visit(arg))
         }).mkString
       } else {
-        val outputIde = nextOutputIdentifier
-        outputs += new CoGaUDFOutput(outputIde, app.tpe)
-        AssignmentStmt(OutputCol(outputIde.toString), visit(app))
+        AssignmentStmt(OutputCol(newUDFOutput(app.tpe)), visit(app))
       }
     } else {
       if (isSupportedBinaryMethod(sel.name)) {
@@ -174,14 +163,21 @@ object UDFCodeGenerator extends AnnotatedC {
     }
   }
 
-  private def generateForSelect(sel: Select)
+  private def generateForSelect(sel: Select, isFinalStmt: Boolean)
     (implicit closure: UDFClosure, outputs: ListBuffer[CoGaUDFOutput]): String = {
     if (isSupportedUnaryMethod(sel.name)) {
-      UnaryOp(sel.name.toTermName, visit(sel.qualifier))
+      val op = UnaryOp(sel.name.toTermName, visit(sel.qualifier))
+      if (isFinalStmt)
+        AssignmentStmt(OutputCol(newUDFOutput(sel.tpe)), UnaryOp(sel.name.toTermName, visit(sel.qualifier)))
+      else
+        NoOp
     } else if (closure.symbolTable isDefinedAt (sel.toString())) {
-      InputCol(closure.symbolTable(sel.toString))
+      if (isFinalStmt)
+        AssignmentStmt(OutputCol(newUDFOutput(sel.tpe)), InputCol(closure.symbolTable(sel.toString)))
+      else
+        NoOp
     } else {
-      throw new IllegalArgumentException(s"Select ${sel.name.toString} not supported.")
+      throw new IllegalArgumentException(s"Select ${sel.toString} not supported.")
     }
   }
 
