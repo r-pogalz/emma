@@ -10,7 +10,7 @@ object UDFCompiler {
 
   val tb = runtimeMirror(getClass.getClassLoader).mkToolBox()
 
-  def compile(udfCode: String, udfType: UDFType, symbolTable: Map[String, String]): Unit = {
+  def compile(udfCode: String, udfType: UDFType, symbolTable: Map[String, String]): TransformedUDF = {
     val ast = tb.typecheck(q"$udfCode")
     val codeGenerator = new UDFCodeGenerator(UDFClosure(ast, symbolTable, udfType))
     codeGenerator.generate

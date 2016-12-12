@@ -78,9 +78,10 @@ trait AnnotatedC {
     case None => s"$op($arg1,$arg2)"
   }
   
-  def generateAssignmentStmt(lhs: String, rhs: String): String = generateLineStmt(s"$lhs=$rhs")
+  def generateAssignmentStmt(lhs: String, rhs: String): Seq[String] = Seq(generateLineStmt(s"$lhs=$rhs"))
   
-  def generateIfThenElseStmt(cond: String, thenp: String, elsep: String): String = s"if($cond){$thenp}else{$elsep}"
+  def generateIfThenElseStmt(cond: String, thenp: Seq[String], elsep: Seq[String]): Seq[String] =
+    Seq(s"if($cond){") ++ thenp  ++ Seq("}else{") ++ elsep ++ Seq("}")
   
   
 }

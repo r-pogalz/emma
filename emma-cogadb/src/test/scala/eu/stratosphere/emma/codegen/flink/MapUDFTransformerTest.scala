@@ -26,14 +26,14 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     "l.tax" -> "LINEITEM.L_TAX"
   )
 
-  "MapUDFTransformer" should "for testing" in {
-    val ast = typecheck(reify {
-      def fun(l: Lineitem): Double = if(l.quantity > 5) 1.5 else 3.0
-    }.tree)
-
-    val actual = mapUdfTransformer.transform(ast, symbolTable)
-    println(actual.udf)
-  }
+//  "MapUDFTransformer" should "for testing" in {
+//    val ast = typecheck(reify {
+//      def fun(l: Lineitem): Double = if(l.quantity > 5) 1.5 else 3.0
+//    }.tree)
+//
+//    val actual = mapUdfTransformer.transform(ast, symbolTable)
+//    println(actual.udf.mkString)
+//  }
 
   "MapUDFTransformer" should "compile final if-then-else with single then and else statement" in {
     val ast = typecheck(reify {
@@ -52,7 +52,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
       s"}" +
       s"#<OUT>.$expectedOutputIde#=$expectedLocalVar;"
     
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
   }
 
   //TODO: test missing input mappings, filter, blocks
@@ -64,7 +64,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualShortUDF = mapUdfTransformer.transform(astWithShort, Map[String, String]("s" -> "SHORT.VAL"))
     val expectedShortUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#SHORT.VAL#;"
-    actualShortUDF.udf should be(expectedShortUDF)
+    actualShortUDF.udf.mkString should be(expectedShortUDF)
     actualShortUDF.output.size should be(1)
 
     val astWithInt = typecheck(reify {
@@ -72,7 +72,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualIntUDF = mapUdfTransformer.transform(astWithInt, Map[String, String]("i" -> "INT.VAL"))
     val expectedIntUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#INT.VAL#;"
-    actualIntUDF.udf should be(expectedIntUDF)
+    actualIntUDF.udf.mkString should be(expectedIntUDF)
     actualIntUDF.output.size should be(1)
 
     val astWithLong = typecheck(reify {
@@ -80,7 +80,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualLongUDF = mapUdfTransformer.transform(astWithLong, Map[String, String]("l" -> "LONG.VAL"))
     val expectedLongUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#LONG.VAL#;"
-    actualLongUDF.udf should be(expectedLongUDF)
+    actualLongUDF.udf.mkString should be(expectedLongUDF)
     actualLongUDF.output.size should be(1)
 
     val astWithFloat = typecheck(reify {
@@ -88,7 +88,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualFloatUDF = mapUdfTransformer.transform(astWithFloat, Map[String, String]("f" -> "FLOAT.VAL"))
     val expectedFloatUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#FLOAT.VAL#;"
-    actualFloatUDF.udf should be(expectedFloatUDF)
+    actualFloatUDF.udf.mkString should be(expectedFloatUDF)
     actualFloatUDF.output.size should be(1)
 
     val astWithDouble = typecheck(reify {
@@ -96,7 +96,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualDoubleUDF = mapUdfTransformer.transform(astWithDouble, Map[String, String]("d" -> "DOUBLE.VAL"))
     val expectedDoubleUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#DOUBLE.VAL#;"
-    actualDoubleUDF.udf should be(expectedDoubleUDF)
+    actualDoubleUDF.udf.mkString should be(expectedDoubleUDF)
     actualDoubleUDF.output.size should be(1)
 
     val astWithBoolean = typecheck(reify {
@@ -104,7 +104,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualBoolUDF = mapUdfTransformer.transform(astWithBoolean, Map[String, String]("b" -> "BOOL.VAL"))
     val expectedBoolUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#BOOL.VAL#;"
-    actualBoolUDF.udf should be(expectedBoolUDF)
+    actualBoolUDF.udf.mkString should be(expectedBoolUDF)
     actualBoolUDF.output.size should be(1)
 
     val astWithChar = typecheck(reify {
@@ -112,7 +112,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualCharUDF = mapUdfTransformer.transform(astWithChar, Map[String, String]("c" -> "CHAR.VAL"))
     val expectedCharUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#CHAR.VAL#;"
-    actualCharUDF.udf should be(expectedCharUDF)
+    actualCharUDF.udf.mkString should be(expectedCharUDF)
     actualCharUDF.output.size should be(1)
 
     val astWithString = typecheck(reify {
@@ -120,7 +120,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     }.tree)
     val actualStringUDF = mapUdfTransformer.transform(astWithString, Map[String, String]("str" -> "VARCHAR.VAL"))
     val expectedStringUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#VARCHAR.VAL#;"
-    actualStringUDF.udf should be(expectedStringUDF)
+    actualStringUDF.udf.mkString should be(expectedStringUDF)
     actualStringUDF.output.size should be(1)
 
   }
@@ -136,7 +136,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
 
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#TRIPLE.VAL1#+#TRIPLE.VAL2#);"
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(1)
   }
 
@@ -152,7 +152,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
 
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#LINEITEM.EXTENDEDPRICE#+#TRIPLE.VAL2#);"
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(1)
   }
 
@@ -211,7 +211,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     val expResIdentifier = nextExpectedOutputIdentifier
     val expectedUDF = s"#<OUT>.$expResIdentifier#=(#LINEITEM.L_QUANTITY#*#LINEITEM.L_EXTENDEDPRICE#);"
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(1)
     actual.output.head should be(UDFOutput(TypeName(expResIdentifier), typeOf[Double]))
   }
@@ -236,7 +236,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
       UDFOutput(TypeName(expResIdentifier3), typeOf[Int])
     )
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(3)
     for (expected <- expectedOutputs) actual.output should contain(expected)
   }
@@ -257,7 +257,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
       UDFOutput(TypeName(expResIdentifier1), typeOf[Int]),
       UDFOutput(TypeName(expResIdentifier2), typeOf[Double]))
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(2)
     for (expected <- expectedOutputs) actual.output should contain(expected)
   }
@@ -273,7 +273,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter w
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=" +
       "(#LINEITEM.L_EXTENDEDPRICE#+(#LINEITEM.L_TAX#*#LINEITEM.L_DISCOUNT#));"
 
-    actual.udf should be(expectedUDF)
+    actual.udf.mkString should be(expectedUDF)
     actual.output.size should be(1)
   }
 

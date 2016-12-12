@@ -15,7 +15,7 @@ object common {
 
   case class UDFClosure(ast: Tree, symTbl: Map[String, String], udfType: UDFType)
 
-  case class TransformedUDF(udf: String, output: Seq[UDFOutput])
+  case class TransformedUDF(udf: Seq[String], output: Seq[UDFOutput])
 
   trait UDFTransformer {
     protected def transform(ast: Tree, symTbl: Map[String, String]): TransformedUDF

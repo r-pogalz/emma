@@ -20,7 +20,7 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
   private def freshVarName = freshTermName("map_udf_local_var_")
 
   private def transformToMapUdfCode(ast: Tree, isPotentialOut: Boolean = false)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     ast match {
       case Function(_, body) =>
         transformToMapUdfCode(body, isPotentialOut)
@@ -32,7 +32,7 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
         transformToMapUdfCode(expr, isPotentialOut)
 
       case Block(xs, expr) =>
-        xs.flatMap(transformToMapUdfCode(_)).mkString + transformToMapUdfCode(expr, isPotentialOut)
+        xs.flatMap(transformToMapUdfCode(_)) ++ transformToMapUdfCode(expr, isPotentialOut)
 
       case Apply(typeApply: TypeApply, args: List[Tree]) =>
         transformTypeApply(typeApply, args, isPotentialOut)
@@ -44,10 +44,10 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
         transformSelect(sel, isPotentialOut)
 
       case Assign(lhs: Ident, rhs) =>
-        generateAssignmentStmt(generateLocalVar(lhs.name), transformToMapUdfCode(rhs))
+        generateAssignmentStmt(generateLocalVar(lhs.name), transformToMapUdfCode(rhs).mkString)
 
       case ValDef(mods, name, tpt: TypeTree, rhs) =>
-        generateAssignmentStmt(generateVarDef(tpt.tpe.toCPrimitive, name), transformToMapUdfCode(rhs))
+        generateAssignmentStmt(generateVarDef(tpt.tpe.toCPrimitive, name), transformToMapUdfCode(rhs).mkString)
 
       case ifAst: If =>
         transformIfThenElse(ifAst, isPotentialOut)
@@ -63,77 +63,77 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
   }
 
   def transformIfThenElse(ifAst: If, isPotentialOut: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     if (isPotentialOut) {
       ifAst match {
         case If(cond, thenp: Block, elsep: Block) => {
           //both branches are block stmts
           val freshLocalVar = freshVarName
-          val transformedCond = transformToMapUdfCode(cond)
-          val transformedThenp = thenp.stats.flatMap(transformToMapUdfCode(_)).mkString +
-            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp.expr))
-          val transformedElsep = elsep.stats.flatMap(transformToMapUdfCode(_)).mkString +
-            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep.expr))
+          val transformedCond = transformToMapUdfCode(cond).mkString
+          val transformedThenp = thenp.stats.flatMap(transformToMapUdfCode(_)) ++
+            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp.expr).mkString)
+          val transformedElsep = elsep.stats.flatMap(transformToMapUdfCode(_)) ++
+            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep.expr).mkString)
 
-          generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar)) +
-            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) +
+          Seq(generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))) ++
+            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) ++
             generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
         }
 
         case If(cond, thenp: Block, elsep) => {
           //only thenp is block stmt
           val freshLocalVar = freshVarName
-          val transformedCond = transformToMapUdfCode(cond)
-          val transformedThenp = thenp.stats.flatMap(transformToMapUdfCode(_)).mkString +
-            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp.expr))
-          val transformedElsep = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep))
+          val transformedCond = transformToMapUdfCode(cond).mkString
+          val transformedThenp = thenp.stats.flatMap(transformToMapUdfCode(_)) ++
+            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp.expr).mkString)
+          val transformedElsep = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep).mkString)
 
-          generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar)) +
-            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) +
+          Seq(generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))) ++
+            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) ++
             generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
         }
 
         case If(cond, thenp, elsep: Block) => {
           //only elsep is block stmt
           val freshLocalVar = freshVarName
-          val transformedCond = transformToMapUdfCode(cond)
-          val transformedThenp = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp))
-          val transformedElsep = elsep.stats.flatMap(transformToMapUdfCode(_)).mkString +
-            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep.expr))
+          val transformedCond = transformToMapUdfCode(cond).mkString
+          val transformedThenp = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp).mkString)
+          val transformedElsep = elsep.stats.flatMap(transformToMapUdfCode(_)) ++
+            generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep.expr).mkString)
 
-          generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar)) +
-            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) +
+          Seq(generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))) ++
+            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) ++
             generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
         }
 
         case If(cond, thenp, elsep) => {
           //single then and else stmt
           val freshLocalVar = freshVarName
-          generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar)) +
+          Seq(generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))) ++
             generateIfThenElseStmt(
-              transformToMapUdfCode(cond),
-              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp)),
-              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep))) +
+              transformToMapUdfCode(cond).mkString,
+              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp).mkString),
+              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep).mkString)) ++
             generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
         }
       }
     } else {
-      generateIfThenElseStmt(transformToMapUdfCode(ifAst.cond), transformToMapUdfCode(ifAst.thenp),
+      generateIfThenElseStmt(transformToMapUdfCode(ifAst.cond).mkString, transformToMapUdfCode(ifAst.thenp),
         transformToMapUdfCode(ifAst.elsep))
     }
   }
 
   private def transformLiteral(lit: Literal, isFinalStmt: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     if (isFinalStmt) {
       generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(lit.tpe)), Const(lit.value))
     } else {
-      Const(lit.value)
+      Seq(Const(lit.value))
     }
   }
 
   private def transformIdent(ide: Ident, isFinalStmt: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     if (isFinalStmt) {
       if (ide.tpe.isScalaBasicType) {
         //if input parameter, otherwise local variable
@@ -147,48 +147,49 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
         //currently assume that only input parameter can be complex (UDT)
         //i.e. instantiation of complex type not allowed except as final statement
         ide.tpe.members.filter(!_.isMethod).toList.reverse
-        .map { fieldIdentifier =>
+        .flatMap { fieldIdentifier =>
           val coGaColumn = symbolTable(ide.name.toString + "." +
             fieldIdentifier.name.toString.trim)
           generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)), generateColAccess(coGaColumn))
-        }.mkString
+        }
       }
     } else {
-      generateLocalVar(ide.name)
+      Seq(generateLocalVar(ide.name))
     }
   }
 
   private def transformTypeApply(typeApply: TypeApply, args: List[Tree], isFinalSmt: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     //initialization of a Tuple type
     if (isFinalSmt) {
-      args.map(arg => {
-        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg))
-      }).mkString
+      args.flatMap(arg => {
+        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg).mkString)
+      })
     } else {
       throw new IllegalArgumentException(s"Instantiation of ${typeApply.toString()} not allowed at this place.")
     }
   }
 
   private def transformSelectApply(app: Apply, sel: Select, args: List[Tree], isFinalSmt: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     if (isFinalSmt) {
       if (isInstantiation(sel.name)) {
         //initialization of a complex type
-        args.map(arg => {
-          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg))
-        }).mkString
+        args.flatMap(arg => {
+          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg).mkString)
+        })
       } else {
-        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(app.tpe)), transformToMapUdfCode(app))
+        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(app.tpe)), transformToMapUdfCode(app).mkString)
       }
     } else {
       if (isSupportedBinaryMethod(sel.name)) {
-        generateBinaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier), transformToMapUdfCode(args.head))
+        Seq(generateBinaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier).mkString,
+          transformToMapUdfCode(args.head).mkString))
       } else if (isSupportedLibrary(sel.qualifier)) {
         args.size match {
-          case 1 => generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(args(0)))
-          case 2 => generateBinaryOp(sel.name.toTermName, transformToMapUdfCode(args(0)),
-            transformToMapUdfCode(args(1)))
+          case 1 => Seq(generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(args(0)).mkString))
+          case 2 => Seq(generateBinaryOp(sel.name.toTermName, transformToMapUdfCode(args(0)).mkString,
+            transformToMapUdfCode(args(1)).mkString))
           case _ => throw new IllegalArgumentException(s"Select ${sel.name.toString} with ${args.size} arguments " +
             "not supported.")
         }
@@ -199,7 +200,7 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
   }
 
   private def transformSelect(sel: Select, isFinalStmt: Boolean)
-    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): String = {
+    (implicit symbolTable: Map[String, String], outputs: ListBuffer[UDFOutput]): Seq[String] = {
     //    if (isSupportedUnaryMethod(sel.name)) {
     //      val op = generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier))
     //      if (isFinalStmt)
@@ -217,9 +218,9 @@ class MapUDFTransformer extends UDFTransformer with AnnotatedC with TypeHelper {
     //      throw new IllegalArgumentException(s"Select ${sel.toString} not supported.")
     //    }
     if (isSupportedUnaryMethod(sel.name)) {
-      generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier))
+      Seq(generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier).mkString))
     } else if (symbolTable isDefinedAt (sel.toString())) {
-      generateColAccess(symbolTable(sel.toString))
+      Seq(generateColAccess(symbolTable(sel.toString)))
     } else {
       throw new IllegalArgumentException(s"Select ${sel.name.toString} not supported.")
     }

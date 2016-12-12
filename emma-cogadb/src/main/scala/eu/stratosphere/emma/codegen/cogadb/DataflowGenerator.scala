@@ -381,18 +381,18 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     //CoGaDB UDF compilation
     val codeGenerator = new UDFCodeGenerator(UDFClosure(mapFun, symTbl, UDFType.Map))
     val transformed = codeGenerator.generate
-    println(transformed.udf)
+    println(transformed.udf.mkString)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
     //      println(cogaMapUDF)
 
     //read map template and substitute mapUDF
-    val mapTemplate = scala.io.Source.fromFile(s"$path/map_template.json").getLines.mkString
-    val cogaMapOperator = mapTemplate.format(transformed.output(0).identifier,
-      transformed.output(0).identifier, transformed.output(0).identifier,
-      transformed.udf, "CROSS$1_1", "CROSS$1_2")
-    scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/map_script.json")(codec = Codec.ISO8859).
-    writeAll(cogaMapOperator)
+//    val mapTemplate = scala.io.Source.fromFile(s"$path/map_template.json").getLines.mkString
+//    val cogaMapOperator = mapTemplate.format(transformed.output(0).identifier,
+//      transformed.output(0).identifier, transformed.output(0).identifier,
+//      transformed.udf, "CROSS$1_1", "CROSS$1_2")
+//    scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/map_script.json")(codec = Codec.ISO8859).
+//    writeAll(cogaMapOperator)
 
     executeOnCoGaDB(s"$sharedCoGaFolder/map_script.json")
     //    sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/map_script.json")
