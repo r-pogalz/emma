@@ -1,4 +1,4 @@
-package eu.stratosphere.emma.codegen.cogadb
+package eu.stratosphere.emma.codegen.cogadb.udfcompilation
 
 import scala.language.implicitConversions
 import scala.reflect.runtime.universe._

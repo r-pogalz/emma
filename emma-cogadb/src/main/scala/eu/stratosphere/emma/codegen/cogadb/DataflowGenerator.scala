@@ -8,7 +8,8 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.UUID
 
 import eu.stratosphere.emma.api.{CSVInputFormat, CSVOutputFormat, ParallelizedDataBag, TextInputFormat}
-import eu.stratosphere.emma.codegen.cogadb.UDFCodeGenerator.UDFClosure
+import eu.stratosphere.emma.codegen.cogadb.udfcompilation.common.{UDFClosure, UDFType}
+import eu.stratosphere.emma.codegen.cogadb.udfcompilation.{UDFCodeGenerator, UDFCompiler}
 import eu.stratosphere.emma.codegen.utils.DataflowCompiler
 import eu.stratosphere.emma.ir
 import eu.stratosphere.emma.macros.RuntimeUtil
@@ -19,6 +20,7 @@ import scala.collection.mutable
 import scala.io.Codec
 import scala.reflect.runtime.universe._
 import scala.sys.process._
+import eu.stratosphere.emma.codegen.cogadb.udfcompilation.common.UDFType.UDFType
 
 class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UUID.randomUUID)
   extends RuntimeUtil {
@@ -135,7 +137,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def generateOpCode(combinator: ir.Combinator[_])
-                            (implicit closure: DataFlowClosure): Tree = combinator match {
+    (implicit closure: DataFlowClosure): Tree = combinator match {
     case op: ir.Read[_] => opCode(op)
     case op: ir.Write[_] => opCode(op)
     case op: ir.TempSource[_] => opCode(op)
@@ -161,7 +163,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B](op: ir.Read[B])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // infer types and generate type information
     val T = typeOf(op.tag).precise
     val inFormatTree = op.format match {
@@ -194,9 +196,9 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
           val substitute2 = loadScript.format("CROSS$1_2", "CROSS$1_2", inputFileName)
 
           scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_1.json")(codec = Codec.ISO8859).
-            writeAll(substitute1)
+          writeAll(substitute1)
           scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/load_script_2.json")(codec = Codec.ISO8859).
-            writeAll(substitute2)
+          writeAll(substitute2)
 
           executeOnCoGaDB(s"$sharedCoGaFolder/load_script_1.json")
           executeOnCoGaDB(s"$sharedCoGaFolder/load_script_2.json")
@@ -253,7 +255,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A](op: ir.Write[A])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     val T = typeOf(op.xs.tag).precise
     // assemble input fragment
     val xs = generateOpCode(op.xs)
@@ -267,7 +269,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
           val substitute = exportTemplate.format("DIST")
 
           scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/export_script.json")(codec = Codec.ISO8859).
-            writeAll(substitute)
+          writeAll(substitute)
           //        executeOnCoGaDB(s"$sharedCoGaFolder/export_script.json")
           //        sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/export_script.json")
         } catch {
@@ -293,7 +295,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B](op: ir.TempSource[B])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // infer types and generate type information
     val T = typeOf(op.tag).precise
     // add a dedicated closure variable to pass the input param
@@ -313,7 +315,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A](op: ir.TempSink[A])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // infer types and generate type information
     val T = typeOf(op.tag).precise
     // assemble input fragment
@@ -340,7 +342,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B](op: ir.Scatter[B])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // infer types and generate type information
     val T = typeOf(op.tag).precise
     // add a dedicated closure variable to pass the scattered term
@@ -351,7 +353,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B, A](op: ir.Map[B, A])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragment
     val xs = generateOpCode(op.xs)
     // generate fn UDF
@@ -362,39 +364,41 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
     //    val anf = typeCheckAndANF(checked)
 
     //COGADB
-//        try {
+    //        try {
     //extract input params of UDF
-    val udfClosure = new UDFClosure()
-    udfClosure.symbolTable += "cross$1._1.x" -> "cross$1_1.x"
-    udfClosure.symbolTable += "cross$1._1.y" -> "cross$1_1.y"
-    udfClosure.symbolTable += "cross$1._2.x" -> "cross$1_2.x"
-    udfClosure.symbolTable += "cross$1._2.y" -> "cross$1_2.y"
-    udfClosure.symbolTable += "left.v" -> "POINT.V"
-    udfClosure.symbolTable += "left.w" -> "POINT.W"
-    udfClosure.symbolTable += "left.x" -> "POINT.X"
-    udfClosure.symbolTable += "left.y" -> "POINT.Y"
-    udfClosure.symbolTable += "left.z" -> "POINT.Z"
+    val symTbl = Map[String, String](
+      "cross$1._1.x" -> "cross$1_1.x",
+      "cross$1._1.y" -> "cross$1_1.y",
+      "cross$1._2.x" -> "cross$1_2.x",
+      "cross$1._2.y" -> "cross$1_2.y",
+      "left.v" -> "POINT.V",
+      "left.w" -> "POINT.W",
+      "left.x" -> "POINT.X",
+      "left.y" -> "POINT.Y",
+      "left.z" -> "POINT.Z"
+    )
 
     //CoGaDB UDF compilation
-    val coGaUDF = UDFCodeGenerator.generateFor(UDFCodeGenerator.MapUDF(mapFun), udfClosure)
-    println(coGaUDF.udf)
+    val codeGenerator = new UDFCodeGenerator(UDFClosure(mapFun, symTbl, UDFType.Map))
+    val transformed = codeGenerator.generate
+    println(transformed.udf)
     //      val transformedMapFun = UDFParser.modifiedTree(mapFun)
     //      val cogaMapUDF = CoGaCodeGenerator.generateCode(transformedMapFun._1)
     //      println(cogaMapUDF)
 
     //read map template and substitute mapUDF
     val mapTemplate = scala.io.Source.fromFile(s"$path/map_template.json").getLines.mkString
-    val cogaMapOperator = mapTemplate.format(coGaUDF.output(0).identifier,
-      coGaUDF.output(0).identifier, coGaUDF.output(0).identifier,
-      coGaUDF.udf, "CROSS$1_1", "CROSS$1_2")
+    val cogaMapOperator = mapTemplate.format(transformed.output(0).identifier,
+      transformed.output(0).identifier, transformed.output(0).identifier,
+      transformed.udf, "CROSS$1_1", "CROSS$1_2")
     scala.tools.nsc.io.File("/Users/rpogalz/CoGaShared/euclideandist/map_script.json")(codec = Codec.ISO8859).
-      writeAll(cogaMapOperator)
+    writeAll(cogaMapOperator)
 
     executeOnCoGaDB(s"$sharedCoGaFolder/map_script.json")
     //    sendMsg("execute_query_from_json /media/sf_CoGaShared/euclideandist/map_script.json")
-//        }catch{
-//          case e: Exception => println("Warning: Could not fill json templates.")
-//        }
+    //        }catch{
+    //          case e: Exception => println("Warning: Could not fill json templates.")
+    //        }
 
     //Flink
     val mapUDF = ir.UDF(mapFun, mapFun.preciseType, tb)
@@ -404,7 +408,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
 
 
   private def opCode[B, A](op: ir.FlatMap[B, A])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragment
     val xs = generateOpCode(op.xs)
     // generate fn UDF
@@ -416,7 +420,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A](op: ir.Filter[A])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragment
     val xs = generateOpCode(op.xs)
     // generate fn UDF
@@ -428,7 +432,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[C, A, B](op: ir.EquiJoin[C, A, B])
-                             (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragments
     val xs = generateOpCode(op.xs)
     val ys = generateOpCode(op.ys)
@@ -439,7 +443,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[C, A, B](op: ir.Cross[C, A, B])
-                             (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragments
     val xs = generateOpCode(op.xs)
     val ys = generateOpCode(op.ys)
@@ -448,7 +452,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B, A](op: ir.Fold[B, A])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragment
     val xs = generateOpCode(op.xs)
     // get fold components
@@ -470,7 +474,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B, A](op: ir.FoldGroup[B, A])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     val SRC = typeOf(op.xs.tag).precise
     val DST = typeOf(op.tag).precise
     // assemble input fragment
@@ -505,7 +509,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A](op: ir.Distinct[A])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragment
     val xs = generateOpCode(op.xs)
     // assemble dataFlow fragment
@@ -513,7 +517,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A](op: ir.Union[A])
-                       (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     // assemble input fragments
     val xs = generateOpCode(op.xs)
     val ys = generateOpCode(op.ys)
@@ -522,7 +526,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[B, A](op: ir.Group[B, A])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     val SRC = typeOf(op.xs.tag).precise
     // assemble input fragment
     val xs = generateOpCode(op.xs)
@@ -542,7 +546,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[A, K](op: ir.StatefulCreate[A, K])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     val S = typeOf(op.tagS).precise
     val K = typeOf(op.tagK).precise
     // assemble input fragment
@@ -551,7 +555,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[S, K](op: ir.StatefulFetch[S, K])
-                          (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     val S = typeOf(op.tag).precise
     val K = typeOf(op.tagK).precise
     closure.closureParams +=
@@ -563,7 +567,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[S, K, U, O](op: ir.UpdateWithZero[S, K, O])
-                                (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     closure.closureParams +=
       TermName(op.name) -> TypeTree(typeOf(op.tagAbstractStatefulBackend).precise)
 
@@ -579,7 +583,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[S, K, U, O](op: ir.UpdateWithOne[S, K, U, O])
-                                (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     closure.closureParams +=
       TermName(op.name) -> TypeTree(typeOf(op.tagAbstractStatefulBackend).precise)
 
@@ -600,7 +604,7 @@ class DataflowGenerator(val compiler: DataflowCompiler, val sessionID: UUID = UU
   }
 
   private def opCode[S, K, U, O](op: ir.UpdateWithMany[S, K, U, O])
-                                (implicit closure: DataFlowClosure): Tree = {
+    (implicit closure: DataFlowClosure): Tree = {
     closure.closureParams +=
       TermName(op.name) -> TypeTree(typeOf(op.tagAbstractStatefulBackend).precise)
 
