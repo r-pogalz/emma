@@ -32,7 +32,7 @@ trait AnnotatedC {
   )
 
   def newUDFOutput(tpe: Type, prefix: String): TypeName = {
-    val name = freshTypeName(prefix)
+    val name = freshTypeName(prefix.toUpperCase)
     name
   }
 
@@ -48,7 +48,7 @@ trait AnnotatedC {
   def isInstantiation(name: Name): Boolean = name == TermName("apply")
 
   def Const(const: Constant): String =
-    if (const.tpe == typeOf[String]) "\"" + const.value + "\""
+    if (const.tpe == typeOf[String] || const.tpe == typeOf[java.lang.String]) "\"" + const.value + "\""
     else if (const.tpe == typeOf[Char]) "\'" + const.value + "\'"
     else s"${const.value}"
 
@@ -58,7 +58,7 @@ trait AnnotatedC {
 
   def generateVarDef(tpe: Name, v: Name): String = s"$tpe $v"
 
-  def generateColAccess(tableCol: String): String = s"#$tableCol#"
+  def generateColAccess(tblName: String, tblCol: String): String = s"#$tblName.${tblCol.toUpperCase}#"
 
   def generateOutputExpr(col: TypeName): String = s"#<OUT>.$col#"
 

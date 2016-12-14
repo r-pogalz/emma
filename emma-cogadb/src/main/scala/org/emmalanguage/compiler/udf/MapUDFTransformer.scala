@@ -12,7 +12,9 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
   with TypeHelper {
 
   private val outputs = mutable.ListBuffer.empty[MapUdfOutAttr]
-  
+
+  val basicTypeColumnIdentifier = "VALUE"
+
   def transform: MapUdf = {
     val mapUdfCode = transformToMapUdfCode(ast, true)
     MapUdf(outputs, mapUdfCode.map(MapUdfCode(_)))
@@ -20,13 +22,13 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
 
   private def freshVarName = freshTermName("map_udf_local_var_")
 
-  private def transformToMapUdfCode(ast: Tree, isPotentialOut: Boolean = false) : Seq[String] = {
+  private def transformToMapUdfCode(ast: Tree, isPotentialOut: Boolean = false): Seq[String] = {
     ast match {
       case Function(_, body) =>
         transformToMapUdfCode(body, isPotentialOut)
 
-//      case DefDef(_, _, _, _, _, rhs) =>
-//        transformToMapUdfCode(rhs, isPotentialOut)
+      //      case DefDef(_, _, _, _, _, rhs) =>
+      //        transformToMapUdfCode(rhs, isPotentialOut)
 
       //TODO: check if this case is really necessary
       case Block(Nil, expr) =>
@@ -123,9 +125,9 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
     }
   }
 
-  private def transformLiteral(lit: Literal, isFinalStmt: Boolean): Seq[String] = {
+  private def transformLiteral(lit: Literal, isFinalStmt: Boolean, infix: String = ""): Seq[String] = {
     if (isFinalStmt) {
-      generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(lit.tpe)), Const(lit.value))
+      generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(lit.value.tpe, infix)), Const(lit.value))
     } else {
       Seq(Const(lit.value))
     }
@@ -133,50 +135,82 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
 
   private def transformIdent(ide: Ident, isFinalStmt: Boolean): Seq[String] = {
     if (isFinalStmt) {
+      val tblName = symbolTable(ide.name.toString)
       if (ide.tpe.isScalaBasicType) {
         //if input parameter, otherwise local variable
         if (symbolTable isDefinedAt ide.name.toString) {
-          val tableCol = symbolTable(ide.name.toString)
-          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)), generateColAccess(tableCol))
+          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)),
+            generateColAccess(tblName, basicTypeColumnIdentifier))
         } else {
           generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)), ide.name.toString)
         }
       } else {
         //currently assume that only input parameter can be complex (UDT)
-        //i.e. instantiation of complex type not allowed except as final statement
-        ide.tpe.members.filter(!_.isMethod).toList.reverse
-        .flatMap { fieldIdentifier =>
-          val coGaColumn = symbolTable(ide.name.toString + "." +
-            fieldIdentifier.name.toString.trim)
-          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)), generateColAccess(coGaColumn))
-        }
+        transformAndFlattenComplexInputOutput(tblName, ide.tpe)
       }
     } else {
       Seq(generateLocalVar(ide.name))
     }
   }
 
+  private def transformAndFlattenComplexInputOutput(tblName: String, tpe: Type, infix: String = ""): Seq[String] = {
+    val valueMembers = tpe.members.filter(!_.isMethod).toList.reverse
+    valueMembers.flatMap { fieldIdentifier => {
+      val currFieldName = fieldIdentifier.name.toString.trim
+      val currTpe = fieldIdentifier.typeSignature
+      if (currTpe.isScalaBasicType) {
+        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(currTpe, s"$infix${currFieldName}_")),
+          generateColAccess(tblName, s"$infix${currFieldName}"))
+      } else {
+        transformAndFlattenComplexInputOutput(tblName, currTpe, s"$infix${currFieldName}_")
+      }
+    }
+    }
+  }
+
   private def transformTypeApply(typeApply: TypeApply, args: List[Tree], isFinalSmt: Boolean): Seq[String] = {
     //initialization of a Tuple type
     if (isFinalSmt) {
-      args.flatMap(arg => {
-        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg).mkString)
-      })
+      transformComplexOutputInitialization(typeApply, true, args)
     } else {
       throw new IllegalArgumentException(s"Instantiation of ${typeApply.toString()} not allowed at this place.")
     }
   }
 
+  //generate code for complex output initialization and flatten if necessary
+  private def transformComplexOutputInitialization(app: Tree, isComplex: Boolean, args: List[Tree],
+    infix: String = ""): Seq[String] = {
+    if (isComplex) {
+      var mapped = mapFieldNameToArg(extractValueMembers(app.tpe), args)
+      mapped.flatMap(tuple =>
+        tuple._2 match {
+          case lit: Literal => transformLiteral(lit, true, s"$infix${tuple._1}_")
+          case appp@Apply(sell: Select, argss: List[Tree]) =>
+            transformComplexOutputInitialization(appp, isInstantiation(sell.name), argss, s"$infix${tuple._1}_")
+          case Apply(typeApply: TypeApply, args: List[Tree]) =>
+            transformComplexOutputInitialization(typeApply, true, args, s"$infix${tuple._1}_")
+          case _ =>
+            generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(tuple._2.tpe, s"$infix${tuple._1}_")),
+              transformToMapUdfCode(tuple._2).mkString)
+        })
+    } else {
+      generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(app.tpe, infix)), transformToMapUdfCode(app).mkString)
+    }
+  }
+
+  private def extractValueMembers(tpe: Type): List[Symbol] =
+    if (!tpe.members.isEmpty) tpe.members.filter(!_.isMethod).toList.reverse
+    else tpe.paramLists.head
+
+  private def mapFieldNameToArg(members: List[Symbol], args: List[Tree]): Seq[(String, Tree)] = {
+    if (members.isEmpty) Seq()
+    else (members.head.name.toString.trim, args.head) +: mapFieldNameToArg(members.tail, args.tail)
+  }
+
   private def transformSelectApply(app: Apply, sel: Select, args: List[Tree], isFinalSmt: Boolean): Seq[String] = {
     if (isFinalSmt) {
-      if (isInstantiation(sel.name)) {
-        //initialization of a complex type
-        args.flatMap(arg => {
-          generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(arg.tpe)), transformToMapUdfCode(arg).mkString)
-        })
-      } else {
-        generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(app.tpe)), transformToMapUdfCode(app).mkString)
-      }
+      //initialization of a complex type
+      transformComplexOutputInitialization(app, isInstantiation(sel.name), args)
     } else {
       if (isSupportedBinaryMethod(sel.name)) {
         Seq(generateBinaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier).mkString,
@@ -196,33 +230,18 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
   }
 
   private def transformSelect(sel: Select, isFinalStmt: Boolean): Seq[String] = {
-    //    if (isSupportedUnaryMethod(sel.name)) {
-    //      val op = generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier))
-    //      if (isFinalStmt)
-    //        generateAssignmentStmt(generateOutputExpr(newUDFOutput(sel.tpe)),
-    //          generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier)))
-    //      else
-    //        generateNoOp
-    //    } else if (symbolTable isDefinedAt (sel.toString())) {
-    //      if (isFinalStmt)
-    //        generateAssignmentStmt(generateOutputExpr(newUDFOutput(sel.tpe)),
-    //          generateColAccess(symbolTable(sel.toString)))
-    //      else
-    //        generateNoOp
-    //    } else {
-    //      throw new IllegalArgumentException(s"Select ${sel.toString} not supported.")
-    //    }
-    if (isSupportedUnaryMethod(sel.name)) {
+    val split = sel.toString.split("\\.")
+    if (sel.symbol.toString.startsWith("method") && isSupportedUnaryMethod(sel.name)) {
       Seq(generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier).mkString))
-    } else if (symbolTable isDefinedAt (sel.toString())) {
-      Seq(generateColAccess(symbolTable(sel.toString)))
+    } else if (symbolTable isDefinedAt (split.head)) {
+      Seq(generateColAccess(symbolTable(split.head), split.tail.mkString("_")))
     } else {
       throw new IllegalArgumentException(s"Select ${sel.name.toString} not supported.")
     }
   }
 
-  private def newMapUDFOutput(tpe: Type): TypeName = {
-    val freshOutputName = newUDFOutput(tpe, "MAP_UDF_RES_")
+  private def newMapUDFOutput(tpe: Type, infix: String = ""): TypeName = {
+    val freshOutputName = newUDFOutput(tpe, s"MAP_UDF_RES_$infix")
     outputs += MapUdfOutAttr(s"${tpe.toJsonAttributeType}", s"$freshOutputName", s"$freshOutputName")
     freshOutputName
   }
