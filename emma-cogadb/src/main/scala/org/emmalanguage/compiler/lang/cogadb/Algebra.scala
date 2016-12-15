@@ -28,7 +28,7 @@ trait Algebra[A] {
   // TODO ...
   def Sort(sortCols: Seq[A]): A
   def GroupBy(groupCols: Seq[A],aggSpec: Seq[A]): A
-  def Selection(predicate: Seq[A]): A
+  def Selection(predicate: A): A
   def TableScan(tableName: String, version: Int = 1): A
   def Projection(attRef: Seq[A]): A
   def MapUdf(mapUdfOutAttr: Seq[A], mapUdfCode: Seq[A] ): A

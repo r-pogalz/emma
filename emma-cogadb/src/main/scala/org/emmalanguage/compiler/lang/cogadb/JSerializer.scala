@@ -67,12 +67,10 @@ object JSerializer extends Algebra[JValue] {
       ))))
     )
 
-  override def Selection(predicate: Seq[JValue]): JValue =
+  override def Selection(predicate: JValue): JValue =
     JObject(
       JField("OPERATOR_NAME", "GENERIC_SELECTION"),
-      JField("GROUPING_COLUMNS", JArray(predicate.toList.map(p => JObject(
-        JField("",p)
-      ))))
+      JField("PREDICATE", predicate)
     )
 
   override def TableScan(tableName: String, version: Int): JValue =

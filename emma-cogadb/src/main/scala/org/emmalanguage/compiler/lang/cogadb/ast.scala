@@ -30,7 +30,7 @@ object ast {
   sealed trait Op extends Node
   case class Sort(sortCols: Seq[SortCol]) extends Op
   case class GroupBy(groupCols: Seq[GroupCol], aggSpec: Seq[AggSpec]) extends Op
-  case class Selection(predicate: Seq[Predicate]) extends Op
+  case class Selection(predicate: Predicate) extends Op
   case class TableScan(tableName: String, version: Int = 1) extends Op
   // TODO: define basic operators
   case class Projection(attRef: Seq[AttrRef]) extends Op

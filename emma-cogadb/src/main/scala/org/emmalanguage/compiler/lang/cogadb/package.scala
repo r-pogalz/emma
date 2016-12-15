@@ -30,7 +30,7 @@ package object cogadb {
     // TODO ...
     case ast.Sort(sortCols) => alg.Sort(sortCols.map(fold(alg)))
     case ast.GroupBy(groupCols, aggSpec) => alg.GroupBy(groupCols.map(fold(alg)), aggSpec.map(fold(alg)))
-    case ast.Selection(predicate) => alg.Selection(predicate.map(fold(alg)))
+    case ast.Selection(predicate) => alg.Selection(fold(alg)(predicate))
     case ast.TableScan(tableName, version) => alg.TableScan(tableName, version)
     case ast.Projection(attRef) => alg.Projection(attRef.map(fold(alg)))
     case ast.MapUdf(mapUdfOutAttr,mapUdfCode) => alg.MapUdf(mapUdfOutAttr.map(fold(alg)),mapUdfCode.map(fold(alg)))
