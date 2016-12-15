@@ -13,7 +13,7 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
 
   private val outputs = mutable.ListBuffer.empty[MapUdfOutAttr]
 
-  val basicTypeColumnIdentifier = "VALUE"
+  private val basicTypeColumnIdentifier = "VALUE"
 
   def transform: MapUdf = {
     val mapUdfCode = transformToMapUdfCode(ast, true)
@@ -22,7 +22,8 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
 
   private def freshVarName = freshTermName("map_udf_local_var_")
 
-  private def transformToMapUdfCode(ast: Tree, isPotentialOut: Boolean = false): Seq[String] = {
+  private def transformToMapUdfCode(ast: Tree, isPotentialOut: Boolean = false):
+  Seq[String] = {
     ast match {
       case Function(_, body) =>
         transformToMapUdfCode(body, isPotentialOut)
@@ -110,13 +111,25 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
 
         case If(cond, thenp, elsep) => {
           //single then and else stmt
-          val freshLocalVar = freshVarName
-          Seq(generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))) ++
-            generateIfThenElseStmt(
-              transformToMapUdfCode(cond).mkString,
-              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp).mkString),
-              generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep).mkString)) ++
-            generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
+          if (ifAst.tpe.isScalaBasicType) {
+            val freshLocalVar = freshVarName
+            val valDef = generateLineStmt(generateVarDef(ifAst.tpe.toCPrimitive, freshLocalVar))
+            val transformedCond = transformToMapUdfCode(cond).mkString
+            val transformedThenp = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(thenp).mkString)
+            val transformedElsep = generateAssignmentStmt(s"$freshLocalVar", transformToMapUdfCode(elsep).mkString)
+            val finalUDFStmt = generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ifAst.tpe)), s"$freshLocalVar")
+            Seq(valDef) ++
+              generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep) ++
+              finalUDFStmt
+          } else {
+            //complex type
+            //currently this case should only occur for filter UDF rewrites to flatMap UDF
+            val transformedCond = transformToMapUdfCode(cond).mkString
+            //flatten thenp stmt
+            val transformedThenp = transformToMapUdfCode(thenp, true)
+            val transformedElsep = Seq(generateLineStmt("NONE"))
+            generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep)
+          }
         }
       }
     } else {
@@ -144,8 +157,8 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
         } else {
           generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(ide.tpe)), ide.name.toString)
         }
-      } else {
-        //currently assume that only input parameter can be complex (UDT)
+      } else{
+        //flatten complex input param (UDT)
         transformAndFlattenComplexInputOutput(tblName, ide.tpe)
       }
     } else {
@@ -153,11 +166,23 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
     }
   }
 
+  private def mapFieldNameToType(members: List[Symbol], types: List[Type]): List[(String, Type)] = {
+    if (members.isEmpty) List()
+    else (members.head.name.toString.trim, types.head) +: mapFieldNameToType(members.tail, types.tail)
+  }
+
   private def transformAndFlattenComplexInputOutput(tblName: String, tpe: Type, infix: String = ""): Seq[String] = {
     val valueMembers = tpe.members.filter(!_.isMethod).toList.reverse
-    valueMembers.flatMap { fieldIdentifier => {
-      val currFieldName = fieldIdentifier.name.toString.trim
-      val currTpe = fieldIdentifier.typeSignature
+    var fieldNamesAndTypes = valueMembers.map(v => (v.name.toString.trim,v.typeSignature))
+    val typeArgs = tpe.typeArgs
+    if(!typeArgs.isEmpty) {
+      //tpe is a Tuple
+      fieldNamesAndTypes = mapFieldNameToType(valueMembers, typeArgs)
+    }
+
+    fieldNamesAndTypes.flatMap { field => {
+      val currFieldName = field._1
+      val currTpe = field._2
       if (currTpe.isScalaBasicType) {
         generateAssignmentStmt(generateOutputExpr(newMapUDFOutput(currTpe, s"$infix${currFieldName}_")),
           generateColAccess(tblName, s"$infix${currFieldName}"))
@@ -235,8 +260,10 @@ class MapUDFTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDF
       Seq(generateUnaryOp(sel.name.toTermName, transformToMapUdfCode(sel.qualifier).mkString))
     } else if (symbolTable isDefinedAt (split.head)) {
       Seq(generateColAccess(symbolTable(split.head), split.tail.mkString("_")))
+    } else if (sel.symbol.toString.startsWith("method") && !isSupportedUnaryMethod(sel.name)) {
+      throw new IllegalArgumentException(s"Method ${sel.name} not supported.")
     } else {
-      throw new IllegalArgumentException(s"Select ${sel.name.toString} not supported.")
+      throw new IllegalArgumentException(s"Missing table mapping for parameter ${split.head}.")
     }
   }
 

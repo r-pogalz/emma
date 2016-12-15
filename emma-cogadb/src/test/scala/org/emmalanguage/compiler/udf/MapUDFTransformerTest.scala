@@ -1,6 +1,7 @@
 package org.emmalanguage
 package compiler.udf
 
+import eu.stratosphere.emma.api.DataBag
 import eu.stratosphere.emma.macros._
 import org.emmalanguage.compiler.RuntimeCompiler
 import org.emmalanguage.compiler.lang.cogadb.ast.{MapUdfOutAttr, _}
@@ -263,7 +264,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
   }
 
   case class NestedNested(second: Nested, partPrice: PartPrice)
-  
+
   "MapUDFTransformer" should "flatten a double nested Complex output" in {
 
     val ast = typecheck(reify {
@@ -273,7 +274,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
 
     val actual = new MapUDFTransformer(ast, symbolTable).transform
-    
+
     val expectedUDF = "#<OUT>.MAP_UDF_RES_SECOND_P_P_PARTKEY_1#=0;" +
       "#<OUT>.MAP_UDF_RES_SECOND_P_P_NAME_1#=\"o\";" +
       "#<OUT>.MAP_UDF_RES_SECOND_P_P_SIZE_1#=2;" +
@@ -281,12 +282,12 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
       "#<OUT>.MAP_UDF_RES_SECOND_P_P_COMMENT_1#=\"comment\";" +
       "#<OUT>.MAP_UDF_RES_PARTPRICE_PART_PRICE_KEY_1#=1;" +
       "#<OUT>.MAP_UDF_RES_PARTPRICE_PART_PRICE_AMOUNT_1#=(#PART.P_RETAILPRICE#*#PART.P_SIZE#);"
-    
+
     actual.concatenated should be(expectedUDF)
   }
 
   case class NestedInOut(nested2: Nested, partPrice2: PartPrice)
-  
+
   "MapUDFTransformer" should "flatten a double nested input if it is returned as a Complex output" in {
 
     val ast = typecheck(reify {
@@ -295,7 +296,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
     val symTbl = Map[String, String]("nestedNested" -> "NESTED")
     val actual = new MapUDFTransformer(ast, symTbl).transform
-    
+
     val expectedUDF = "#<OUT>.MAP_UDF_RES_NESTED2_P_P_PARTKEY_1#=#NESTED.NESTED2_P_P_PARTKEY#;" +
       "#<OUT>.MAP_UDF_RES_NESTED2_P_P_NAME_1#=#NESTED.NESTED2_P_P_NAME#;" +
       "#<OUT>.MAP_UDF_RES_NESTED2_P_P_SIZE_1#=#NESTED.NESTED2_P_P_SIZE#;" +
@@ -317,17 +318,17 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     }.tree)
 
     val actual = new MapUDFTransformer(ast, symbolTable).transform
-    
-    val expResIdentifier1 ="MAP_UDF_RES__1_1"
-    val expResIdentifier2 ="MAP_UDF_RES__2_SECOND_P_P_PARTKEY_1"
-    val expResIdentifier3 ="MAP_UDF_RES__2_SECOND_P_P_NAME_1"
-    val expResIdentifier4 ="MAP_UDF_RES__2_SECOND_P_P_SIZE_1"
-    val expResIdentifier5 ="MAP_UDF_RES__2_SECOND_P_P_RETAILPRICE_1"
-    val expResIdentifier6 ="MAP_UDF_RES__2_SECOND_P_P_COMMENT_1"
-    val expResIdentifier7 ="MAP_UDF_RES__2_PARTPRICE_PART_PRICE_KEY_1"
-    val expResIdentifier8 ="MAP_UDF_RES__2_PARTPRICE_PART_PRICE_AMOUNT_1"
-    val expResIdentifier9 ="MAP_UDF_RES__3_1"
-    
+
+    val expResIdentifier1 = "MAP_UDF_RES__1_1"
+    val expResIdentifier2 = "MAP_UDF_RES__2_SECOND_P_P_PARTKEY_1"
+    val expResIdentifier3 = "MAP_UDF_RES__2_SECOND_P_P_NAME_1"
+    val expResIdentifier4 = "MAP_UDF_RES__2_SECOND_P_P_SIZE_1"
+    val expResIdentifier5 = "MAP_UDF_RES__2_SECOND_P_P_RETAILPRICE_1"
+    val expResIdentifier6 = "MAP_UDF_RES__2_SECOND_P_P_COMMENT_1"
+    val expResIdentifier7 = "MAP_UDF_RES__2_PARTPRICE_PART_PRICE_KEY_1"
+    val expResIdentifier8 = "MAP_UDF_RES__2_PARTPRICE_PART_PRICE_AMOUNT_1"
+    val expResIdentifier9 = "MAP_UDF_RES__3_1"
+
     val expectedUDF = s"#<OUT>.$expResIdentifier1#=#PART.P_PARTKEY#;" +
       s"#<OUT>.$expResIdentifier2#=0;" +
       "#<OUT>.MAP_UDF_RES__2_SECOND_P_P_NAME_1#=\"o\";" +
