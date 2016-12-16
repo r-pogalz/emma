@@ -50,16 +50,31 @@ object ast {
   //@formatter:on
 
   // ---------------------------------------------------------------------------
+  // Aggregation Functions
+  // ---------------------------------------------------------------------------
+  sealed trait AggFunc extends Node
+  case class AlgebraicReduceUdf(reduceUdfPayload: Seq[ReduceUdfAttr],
+    reduceUdfOutAttr: Seq[ReduceUdfOutAttr], reduceUdfCode: Seq[ReduceUdfCode], reduceUdfFinalCode: Seq[ReduceUdfCode])
+    extends AggFunc
+  case class AggSum(attrRef: AttrRef) extends AggFunc
+  //TODO: add other possible aggregation functions
+
+  // ---------------------------------------------------------------------------
   // Leafs
   // ---------------------------------------------------------------------------
 
   case class AttrRef(table: String, col: String, result: String, version: Short = 1) extends Node
-  //TODO
+  //TODO: check if next two classes can be merged
   case class MapUdfCode(code: String) extends Node
+  case class ReduceUdfCode(code: String) extends Node
+  //TODO: check if next two classes can be merged
   case class MapUdfOutAttr(attType: String, attName: String, intVarName: String) extends Node
-  case class AggSpec(aggFunc: String, attrRef: AttrRef) extends Node
+  case class ReduceUdfOutAttr(attType: String, attName: String, intVarName: String) extends Node
+  case class AggSpec(aggFunc: String, attrRef: AttrRef) extends Node //TODO: replace by AggSpec2
+  case class AggSpec2(aggFunc: Seq[AggFunc]) extends Node
   case class GroupCol(attrRef: AttrRef) extends Node
   case class SortCol(table: String, col: String, result: String, version: Short = 1, order: String) extends Node
+  case class ReduceUdfAttr(attType: String, attName: String, attInitVal: Const) extends Node
 
   //@formatter:off
   sealed trait Const extends Node {
