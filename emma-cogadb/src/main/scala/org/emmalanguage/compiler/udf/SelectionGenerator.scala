@@ -1,23 +1,23 @@
 package org.emmalanguage.compiler.udf
 
-import scala.collection.mutable
-import scala.reflect.runtime.universe._
-import internal.reificationSupport._
 import org.emmalanguage.compiler.lang.cogadb.ast._
 import org.emmalanguage.compiler.udf.common._
 
-class SelectionTransformer(ast: Tree, symbolTable: Map[String, String]) extends UDFTransformer[Selection]
+import scala.reflect.runtime.universe._
+
+class SelectionGenerator(ast: Tree, symbolTable: Map[String, String]) extends JsonIRGenerator[Selection]
   with TypeHelper {
 
   private val mappedSelectionComparators: Map[String, Comparator] = Map(
     "$eq$eq" -> Equal, //==
+    "$bang$eq" -> Unequal, //!=
     "$less" -> LessThan, //<
     "$less$eq" -> LessEqual, //<=
     "$greater" -> GreaterThan, //>
     "$greater$eq" -> GreaterEqual //>=
   )
 
-  def transform: Selection = Selection(generatePredicate(ast))
+  def generate: Selection = Selection(generatePredicate(ast))
 
   private def generatePredicate(t: Tree): Predicate = {
     t match {
@@ -47,14 +47,14 @@ class SelectionTransformer(ast: Tree, symbolTable: Map[String, String]) extends 
     case lhsQualifier: Select => {
       val lhsSplit = lhsQualifier.toString().split("\\.")
       val lhsTtbl = symbolTable(lhsSplit.head)
-      val lhsCol = lhsSplit.tail.mkString("_")
+      val lhsCol = lhsSplit.tail.mkString("_").toUpperCase
 
       rhs match {
         //lhs and rhs are columns
         case rhsQualifier: Select => {
           val rhsSplit = rhsQualifier.toString().split("\\.")
           val rhsTtbl = symbolTable(rhsSplit.head)
-          val rhsCol = rhsSplit.tail.mkString("_")
+          val rhsCol = rhsSplit.tail.mkString("_").toUpperCase
 
           val comparator = getComparator(op)
           ColCol(AttrRef(lhsTtbl, lhsCol, lhsCol), AttrRef(rhsTtbl, rhsCol, rhsCol), comparator)
@@ -69,7 +69,7 @@ class SelectionTransformer(ast: Tree, symbolTable: Map[String, String]) extends 
       case rhsQualifier: Select => {
         val rhsSplit = rhsQualifier.toString().split("\\.")
         val rhsTtbl = symbolTable(rhsSplit.head)
-        val rhsCol = rhsSplit.tail.mkString("_")
+        val rhsCol = rhsSplit.tail.mkString("_").toUpperCase
 
         val comparator = getComparator(op)
         ColConst(AttrRef(rhsTtbl, rhsCol, rhsCol), matchConst(c), comparator)
@@ -82,21 +82,5 @@ class SelectionTransformer(ast: Tree, symbolTable: Map[String, String]) extends 
     case Some(comp) => comp
     case None => throw new IllegalArgumentException(s"Selection operator for op $op not supported.")
   }
-
-  private def matchConst(c: Constant): Const =
-    if (c.tpe == typeOf[Short] || c.tpe == typeOf[Int])
-      IntConst(c.value.asInstanceOf[Int])
-    else if (c.tpe == typeOf[Float])
-           FloatConst(c.value.asInstanceOf[Float])
-    else if (c.tpe == typeOf[Double])
-           DoubleConst(c.value.asInstanceOf[Double])
-    else if (c.tpe == typeOf[String] || c.tpe == typeOf[java.lang.String])
-           VarCharConst(c.value.asInstanceOf[String])
-    else if (c.tpe == typeOf[Char])
-           CharConst(c.value.asInstanceOf[Char])
-    else if (c.tpe == typeOf[Boolean])
-           BoolConst(c.value.asInstanceOf[String])
-    else
-      throw new IllegalArgumentException(s"Constant $c of type ${c.tpe} not supported.")
 
 }

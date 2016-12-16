@@ -1,38 +1,36 @@
 package org.emmalanguage
 package compiler.udf
 
+import org.emmalanguage.compiler.lang.cogadb.ast._
 import org.emmalanguage.compiler.udf.common._
-import compiler.lang.cogadb.ast._
 
 import scala.reflect.runtime.universe._
 import scala.tools.reflect.ToolBox
 
 
-class UDFCodeGenerator(udfClosure: UDFClosure) {
+class UDFTransformer(udfClosure: UDFClosure) extends TypeHelper {
 
   val tb = runtimeMirror(getClass.getClassLoader).mkToolBox()
 
-  def generate: Node = udfClosure.ast match {
-    case fun: Function => udfClosure.udfType match {
-      case UDFType.Map => new MapUDFTransformer(fun, udfClosure.symTbl).transform
-      case UDFType.Filter => generateForFilterUDF(fun)
-      case UDFType.Fold => throw new IllegalArgumentException("Not implemented yet")
-    }
-    case _ => throw new IllegalArgumentException(s"Scala AST is not a Function: ${showRaw(udfClosure.ast)}")
+  def transform: Node = udfClosure match {
+    case MapUDFClosure(ast, symTbl) => new MapUDFGenerator(ast, symTbl).generate
+    case FilterUDFClosure(ast, symTbl) => transformFilterUDF(ast, symTbl)
+    case FoldUDFClosure(zAst, sngAst, uniAst, symTbl) =>
+      new ReduceUDFGenerator(zAst, sngAst, uniAst, symTbl).generate
   }
 
-  private def generateForFilterUDF(fun: Function): Node = {
-    genericSelectionChecker.traverse(fun)
+  private def transformFilterUDF(ast: Tree, symTbl: Map[String, String]): Node = {
+    genericSelectionChecker.traverse(ast)
     if (genericSelectionChecker.isTransformable) {
       //generate GENERIC_SELECTION predicate
-      new SelectionTransformer(udfClosure.ast, udfClosure.symTbl).transform
+      new SelectionGenerator(ast, symTbl).generate
     } else {
       //rewrite filter predicate to flatMap UDF and apply map udf transformation
-      val flatMapUdf = filterToFlatMapUDFTransformer.transform(fun)
+      val flatMapUdf = filterToFlatMapUDFTransformer.transform(ast)
       val unTypeCheckedAST = tb.untypecheck(flatMapUdf)
       val typeCheckedAST = tb.typecheck(unTypeCheckedAST)
 
-      new MapUDFTransformer(typeCheckedAST, udfClosure.symTbl).transform
+      new MapUDFGenerator(typeCheckedAST, symTbl).generate
     }
   }
 
@@ -44,13 +42,14 @@ class UDFCodeGenerator(udfClosure: UDFClosure) {
 
     var isTransformable = true
     private val supportedSelectionOperations = Seq(
-      TermName("$eq$eq"),       //==
-      TermName("$less"),        //<
-      TermName("$less$eq"),     //<=
-      TermName("$greater"),     //>
-      TermName("$greater$eq"),  //>=
-      TermName("$amp$amp"),     //&&
-      TermName("$bar$bar")      //||
+      TermName("$eq$eq"), //==
+      TermName("$bang$eq"), //!=
+      TermName("$less"), //<
+      TermName("$less$eq"), //<=
+      TermName("$greater"), //>
+      TermName("$greater$eq"), //>=
+      TermName("$amp$amp"), //&&
+      TermName("$bar$bar") //||
     )
 
     override def traverse(tree: Tree) = tree match {

@@ -22,32 +22,31 @@ trait TypeHelper {
       typeOf[Boolean] -> TypeName("bool"))
 
     private val scalaToJsonAttributeType = Map(
-      typeOf[Short] -> TypeName("INT"),
-      typeOf[Int] -> TypeName("INT"),
-      typeOf[Long] -> TypeName("UINT32"), //this does not work for negative values, ask Sebastian Bress to support Long
-      typeOf[Float] -> TypeName("FLOAT"),
-      typeOf[Double] -> TypeName("DOUBLE"),
-      typeOf[Char] -> TypeName("CHAR"),
-      typeOf[String] -> TypeName("VARCHAR"),
-      typeOf[java.lang.String] -> TypeName("VARCHAR"),
-      typeOf[Boolean] -> TypeName("BOOLEAN"))
+      typeOf[Short] -> "INT",
+      typeOf[Int] -> "INT",
+      typeOf[Long] -> "UINT32", //this does not work for negative values, ask Sebastian Bress to support Long
+      typeOf[Float] -> "FLOAT",
+      typeOf[Double] -> "DOUBLE",
+      typeOf[Char] -> "CHAR",
+      typeOf[String] -> "VARCHAR",
+      typeOf[java.lang.String] -> "VARCHAR",
+      typeOf[Boolean] -> "BOOLEAN")
 
     private val basicTypes = Seq(typeOf[Short], typeOf[Int], typeOf[Long], typeOf[Float], typeOf[Double], typeOf[Char],
       typeOf[String], typeOf[java.lang.String], typeOf[Boolean])
-
-    def isValidUDT: Boolean = ???
 
     def toCPrimitive: Name = scalaToC.get(t) match {
       case Some(value) => value
       case None => throw new IllegalArgumentException(s"No existing primitive C type for $t.")
     }
 
-    def toJsonAttributeType: Name = scalaToJsonAttributeType.get(t) match {
+    def toJsonAttributeType: String = scalaToJsonAttributeType.get(t) match {
       case Some(value) => value
       case None => throw new IllegalArgumentException(s"No existing JSON attribute type for $t.")
     }
 
     def isScalaBasicType: Boolean = basicTypes.contains(t)
+
   }
 
 

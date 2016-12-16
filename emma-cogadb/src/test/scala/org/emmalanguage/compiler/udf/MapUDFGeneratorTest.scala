@@ -1,11 +1,8 @@
 package org.emmalanguage
 package compiler.udf
 
-import eu.stratosphere.emma.api.DataBag
-import eu.stratosphere.emma.macros._
-import org.emmalanguage.compiler.RuntimeCompiler
 import org.emmalanguage.compiler.lang.cogadb.ast.{MapUdfOutAttr, _}
-import org.emmalanguage.compiler.udf.MapUDFTransformerTest._
+import org.emmalanguage.compiler.udf.MapUDFGeneratorTest._
 import org.junit.runner.RunWith
 import org.scalatest._
 import org.scalatest.junit.JUnitRunner
@@ -15,7 +12,7 @@ import scala.reflect.runtime.universe._
 import scala.tools.reflect.ToolBox
 
 @RunWith(classOf[JUnitRunner])
-class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
+class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
 
   val tb = runtimeMirror(getClass.getClassLoader).mkToolBox()
 
@@ -31,7 +28,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
   //    .identity(typeCheck = true)
   //    .compose(_.tree)
   //
-  //  "MapUDFTransformer" should "for testing" in {
+  //  "MapUDFGenerator" should "for testing" in {
   //    val ast: u.Tree = idPipeline(u.reify {
   //      def fun(l: Lineitem): Double = {
   //        val t: Double = 0.5
@@ -48,13 +45,13 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     implicit def concatenated: String = udf.mapUdfCode.map(_.code).mkString
   }
 
-  "MapUDFTransformer" should
+  "MapUDFGenerator" should
     "compile final if-then-else with single then and else statement and consider double cast" in {
     val ast = typecheck(reify {
-      (() => ((p: Part) => if (p.p_partkey > 5) p.p_size else p.p_retailprice))
+      () => (p: Part) => if (p.p_partkey > 5) p.p_size else p.p_retailprice
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expectedOutputIde = nextExpectedOutputIdentifier
     val expectedLocalVar = nextExpectedLocalVarIdentifier
@@ -73,83 +70,83 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
   //TODO: test missing input mappings, filter, blocks
 
-  "MapUDFTransformer" should "compile a UDF with a single basic type as input" in {
+  "MapUDFGenerator" should "compile a UDF with a single basic type as input" in {
 
     val astWithShort = typecheck(reify {
-      (() => ((s: Short) => s))
+      () => (s: Short) => s
     }.tree)
-    val actualShortUDF = new MapUDFTransformer(astWithShort, Map[String, String]("s" -> "SHORT")).
-                         transform
+    val actualShortUDF = new MapUDFGenerator(astWithShort, Map[String, String]("s" -> "SHORT")).
+                         generate
     val expectedShortUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#SHORT.VALUE#;"
     actualShortUDF.concatenated should be(expectedShortUDF)
     actualShortUDF.mapUdfOutAttr.size should be(1)
 
     val astWithInt = typecheck(reify {
-      (() => ((i: Int) => i))
+      () => (i: Int) => i
     }.tree)
-    val actualIntUDF = new MapUDFTransformer(astWithInt, Map[String, String]("i" -> "INT")).transform
+    val actualIntUDF = new MapUDFGenerator(astWithInt, Map[String, String]("i" -> "INT")).generate
     val expectedIntUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#INT.VALUE#;"
     actualIntUDF.concatenated should be(expectedIntUDF)
     actualIntUDF.mapUdfOutAttr.size should be(1)
 
     val astWithLong = typecheck(reify {
-      (() => ((l: Long) => l))
+      () => (l: Long) => l
     }.tree)
-    val actualLongUDF = new MapUDFTransformer(astWithLong, Map[String, String]("l" -> "LONG")).transform
+    val actualLongUDF = new MapUDFGenerator(astWithLong, Map[String, String]("l" -> "LONG")).generate
     val expectedLongUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#LONG.VALUE#;"
     actualLongUDF.concatenated should be(expectedLongUDF)
     actualLongUDF.mapUdfOutAttr.size should be(1)
 
     val astWithFloat = typecheck(reify {
-      (() => ((f: Float) => f))
+      () => (f: Float) => f
     }.tree)
-    val actualFloatUDF = new MapUDFTransformer(astWithFloat, Map[String, String]("f" -> "FLOAT")).transform
+    val actualFloatUDF = new MapUDFGenerator(astWithFloat, Map[String, String]("f" -> "FLOAT")).generate
     val expectedFloatUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#FLOAT.VALUE#;"
     actualFloatUDF.concatenated should be(expectedFloatUDF)
     actualFloatUDF.mapUdfOutAttr.size should be(1)
 
     val astWithDouble = typecheck(reify {
-      (() => ((d: Double) => d))
+      () => (d: Double) => d
     }.tree)
-    val actualDoubleUDF = new MapUDFTransformer(astWithDouble, Map[String, String]("d" -> "DOUBLE")).transform
+    val actualDoubleUDF = new MapUDFGenerator(astWithDouble, Map[String, String]("d" -> "DOUBLE")).generate
     val expectedDoubleUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#DOUBLE.VALUE#;"
     actualDoubleUDF.concatenated should be(expectedDoubleUDF)
     actualDoubleUDF.mapUdfOutAttr.size should be(1)
 
     val astWithBoolean = typecheck(reify {
-      (() => ((b: Boolean) => b))
+      () => (b: Boolean) => b
     }.tree)
-    val actualBoolUDF = new MapUDFTransformer(astWithBoolean, Map[String, String]("b" -> "BOOL")).transform
+    val actualBoolUDF = new MapUDFGenerator(astWithBoolean, Map[String, String]("b" -> "BOOL")).generate
     val expectedBoolUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#BOOL.VALUE#;"
     actualBoolUDF.concatenated should be(expectedBoolUDF)
     actualBoolUDF.mapUdfOutAttr.size should be(1)
 
     val astWithChar = typecheck(reify {
-      (() => ((c: Char) => c))
+      () => (c: Char) => c
     }.tree)
-    val actualCharUDF = new MapUDFTransformer(astWithChar, Map[String, String]("c" -> "CHAR")).transform
+    val actualCharUDF = new MapUDFGenerator(astWithChar, Map[String, String]("c" -> "CHAR")).generate
     val expectedCharUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#CHAR.VALUE#;"
     actualCharUDF.concatenated should be(expectedCharUDF)
     actualCharUDF.mapUdfOutAttr.size should be(1)
 
     val astWithString = typecheck(reify {
-      (() => ((str: String) => str))
+      () => (str: String) => str
     }.tree)
-    val actualStringUDF = new MapUDFTransformer(astWithString, Map[String, String]("str" -> "VARCHAR")).transform
+    val actualStringUDF = new MapUDFGenerator(astWithString, Map[String, String]("str" -> "VARCHAR")).generate
     val expectedStringUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=#VARCHAR.VALUE#;"
     actualStringUDF.concatenated should be(expectedStringUDF)
     actualStringUDF.mapUdfOutAttr.size should be(1)
 
   }
 
-  "MapUDFTransformer" should "compile a UDF with a Tuple input containing basic types" in {
+  "MapUDFGenerator" should "compile a UDF with a Tuple input containing basic types" in {
 
     val ast = typecheck(reify {
-      (() => ((input: (Int, Double, String)) => input._1 + input._2))
+      () => (input: (Int, Double, String)) => input._1 + input._2
     }.tree)
 
     val symTbl = Map[String, String]("input" -> "TRIPLE")
-    val actual = new MapUDFTransformer(ast, symTbl).transform
+    val actual = new MapUDFGenerator(ast, symTbl).generate
 
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#TRIPLE._1#+#TRIPLE._2#);"
 
@@ -157,14 +154,14 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.mapUdfOutAttr.size should be(1)
   }
 
-  "MapUDFTransformer" should "compile a UDF with a Tuple input containing case classes and basic types" in {
+  "MapUDFGenerator" should "compile a UDF with a Tuple input containing case classes and basic types" in {
 
     val ast = typecheck(reify {
-      (() => ((input: (Part, Double, String)) => input._1.p_retailprice + input._2))
+      () => (input: (Part, Double, String)) => input._1.p_retailprice + input._2
     }.tree)
 
     val symTbl = Map[String, String]("input" -> "TRIPLE")
-    val actual = new MapUDFTransformer(ast, symTbl).transform
+    val actual = new MapUDFGenerator(ast, symTbl).generate
 
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#TRIPLE._1_P_RETAILPRICE#+#TRIPLE._2#);"
 
@@ -175,47 +172,47 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
   ignore should "throw an exception for missing input-parameter-to-table mapping" in {
 
     val ast = typecheck(reify {
-      (() => ((missingMapping: Part) => missingMapping.p_partkey))
+      () => (missingMapping: Part) => missingMapping.p_partkey
     }.tree)
 
     the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFTransformer(ast, Map[String, String]()).transform
+      val actual = new MapUDFGenerator(ast, Map[String, String]()).generate
     } should have message "No mapping found for [l.suppKey]"
   }
 
   ignore should "throw an exception if a UDF parameter type is an arbitrary class" in {
 
     val ast = typecheck(reify {
-      (() => ((input: ArbitraryClass) => input.value))
+      () => (input: ArbitraryClass) => input.value
     }.tree)
 
     val symTbl = Map[String, String]("input" -> "ARBITRARY_TABLE")
 
     the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFTransformer(ast, symTbl).transform
+      val actual = new MapUDFGenerator(ast, symTbl).generate
     } should have message "ArbitraryClass is not a case class."
   }
 
   ignore should "throw an exception if a UDF parameter type in a Tuple is an arbitrary class" in {
 
     val ast = typecheck(reify {
-      (() => ((input: (Int, ArbitraryClass)) => input._2.value))
+      () => (input: (Int, ArbitraryClass)) => input._2.value
     }.tree)
 
     val symTbl = Map[String, String]("input" -> "TUPLE")
 
     the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFTransformer(ast, symbolTable).transform
+      val actual = new MapUDFGenerator(ast, symbolTable).generate
     } should have message "ArbitraryClass is not a case class."
   }
 
-  "MapUDFTransformer" should "return correct result type" in {
+  "MapUDFGenerator" should "return correct result type" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) => p.p_size * p.p_retailprice))
+      () => (p: Part) => p.p_size * p.p_retailprice
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expResIdentifier = nextExpectedOutputIdentifier
     val expectedUDF = s"#<OUT>.$expResIdentifier#=(#PART.P_SIZE#*#PART.P_RETAILPRICE#);"
@@ -225,13 +222,13 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.mapUdfOutAttr.head should be(MapUdfOutAttr("DOUBLE", expResIdentifier, expResIdentifier))
   }
 
-  "MapUDFTransformer" should "return multiple results for a Complex output type" in {
+  "MapUDFGenerator" should "return multiple results for a Complex output type" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) => PartPrice(1, p.p_retailprice * p.p_size)))
+      () => (p: Part) => PartPrice(1, p.p_retailprice * p.p_size)
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expResIdentifier1 = "MAP_UDF_RES_PART_PRICE_KEY_1"
     val expResIdentifier2 = "MAP_UDF_RES_PART_PRICE_AMOUNT_1"
@@ -246,13 +243,13 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     for (expected <- expectedOutputs) actual.mapUdfOutAttr should contain(expected)
   }
 
-  "MapUDFTransformer" should "flatten a nested Complex output" in {
+  "MapUDFGenerator" should "flatten a nested Complex output" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) => Nested(Part(0, "o", 2, 0.5, "comment"))))
+      () => (p: Part) => Nested(Part(0, "o", 2, 0.5, "comment"))
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expectedUDF = "#<OUT>.MAP_UDF_RES_P_P_PARTKEY_1#=0;" +
       "#<OUT>.MAP_UDF_RES_P_P_NAME_1#=\"o\";" +
@@ -265,15 +262,15 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
   case class NestedNested(second: Nested, partPrice: PartPrice)
 
-  "MapUDFTransformer" should "flatten a double nested Complex output" in {
+  "MapUDFGenerator" should "flatten a double nested Complex output" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) =>
-        NestedNested(Nested(Part(0, "o", 2, 0.5, "comment")), PartPrice(1, p.p_retailprice * p.p_size))))
+      () => (p: Part) =>
+        NestedNested(Nested(Part(0, "o", 2, 0.5, "comment")), PartPrice(1, p.p_retailprice * p.p_size))
     }.tree)
 
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expectedUDF = "#<OUT>.MAP_UDF_RES_SECOND_P_P_PARTKEY_1#=0;" +
       "#<OUT>.MAP_UDF_RES_SECOND_P_P_NAME_1#=\"o\";" +
@@ -288,14 +285,14 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
   case class NestedInOut(nested2: Nested, partPrice2: PartPrice)
 
-  "MapUDFTransformer" should "flatten a double nested input if it is returned as a Complex output" in {
+  "MapUDFGenerator" should "flatten a double nested input if it is returned as a Complex output" in {
 
     val ast = typecheck(reify {
-      (() => ((nestedNested: NestedInOut) => nestedNested))
+      () => (nestedNested: NestedInOut) => nestedNested
     }.tree)
 
     val symTbl = Map[String, String]("nestedNested" -> "NESTED")
-    val actual = new MapUDFTransformer(ast, symTbl).transform
+    val actual = new MapUDFGenerator(ast, symTbl).generate
 
     val expectedUDF = "#<OUT>.MAP_UDF_RES_NESTED2_P_P_PARTKEY_1#=#NESTED.NESTED2_P_P_PARTKEY#;" +
       "#<OUT>.MAP_UDF_RES_NESTED2_P_P_NAME_1#=#NESTED.NESTED2_P_P_NAME#;" +
@@ -308,16 +305,16 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.concatenated should be(expectedUDF)
   }
 
-  "MapUDFTransformer" should "flatten tuple with nested type" in {
+  "MapUDFGenerator" should "flatten tuple with nested type" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) =>
+      () => (p: Part) =>
         (p.p_partkey,
           NestedNested(Nested(Part(0, "o", 2, 0.5, "comment")), PartPrice(1, p.p_retailprice * p.p_size)),
-          3.5)))
+          3.5)
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expResIdentifier1 = "MAP_UDF_RES__1_1"
     val expResIdentifier2 = "MAP_UDF_RES__2_SECOND_P_P_PARTKEY_1"
@@ -358,13 +355,13 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.concatenated should be(expectedUDF)
   }
 
-  "MapUDFTransformer" should "consider point before line calculation" in {
+  "MapUDFGenerator" should "consider point before line calculation" in {
 
     val ast = typecheck(reify {
-      (() => ((p: Part) => p.p_retailprice + p.p_size * p.p_partkey))
+      () => (p: Part) => p.p_retailprice + p.p_size * p.p_partkey
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, symbolTable).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
 
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=" +
       "(#PART.P_RETAILPRICE#+(#PART.P_SIZE#*#PART.P_PARTKEY#));"
@@ -373,15 +370,34 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.mapUdfOutAttr.size should be(1)
   }
 
-  case class IntWrapper(toDouble: Int)
-
-  "MapUDFTransformer" should "consider toDouble as a value instead of a method" in {
+  "MapUDFGenerator" should "correctly compile local val as output" in {
 
     val ast = typecheck(reify {
-      (() => ((input: IntWrapper) => input.toDouble * 0.5))
+      () => (p: Part) => {
+        val x = 2.5
+        x
+      }
     }.tree)
 
-    val actual = new MapUDFTransformer(ast, Map[String, String]("input" -> "TABLE")).transform
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
+
+    val expectedUDF = s"double x=2.5;" +
+      s"#<OUT>.$nextExpectedOutputIdentifier#=x;"
+
+    actual.concatenated should be(expectedUDF)
+    actual.mapUdfOutAttr.size should be(1)
+  }
+
+
+  case class IntWrapper(toDouble: Int)
+
+  "MapUDFGenerator" should "consider toDouble as a value instead of a method" in {
+
+    val ast = typecheck(reify {
+      () => (input: IntWrapper) => input.toDouble * 0.5
+    }.tree)
+
+    val actual = new MapUDFGenerator(ast, Map[String, String]("input" -> "TABLE")).generate
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#TABLE.TODOUBLE#*0.5);"
 
     actual.concatenated should be(expectedUDF)
@@ -391,7 +407,7 @@ class MapUDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
 
 }
 
-object MapUDFTransformerTest {
+object MapUDFGeneratorTest {
 
   var currentExpectedOutputId = 0
   var currentExpectedLocalVarId = 0
