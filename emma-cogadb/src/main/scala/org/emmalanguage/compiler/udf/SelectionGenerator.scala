@@ -8,6 +8,8 @@ import scala.reflect.runtime.universe._
 class SelectionGenerator(ast: Tree, symbolTable: Map[String, String]) extends JsonIRGenerator[Selection]
   with TypeHelper {
 
+  private val basicTypeColumnName = "VALUE"
+
   private val mappedSelectionComparators: Map[String, Comparator] = Map(
     "$eq$eq" -> Equal, //==
     "$bang$eq" -> Unequal, //!=
@@ -38,30 +40,24 @@ class SelectionGenerator(ast: Tree, symbolTable: Map[String, String]) extends Js
   private def generateFor(sel: Select, args: List[Tree]): Predicate = sel.name match {
     case TermName("$amp$amp") => And(generatePredicate(sel.qualifier) :: generatePredicate(args))
     case TermName("$bar$bar") => Or(generatePredicate(sel.qualifier) :: generatePredicate(args))
-    case TermName(name) => generateAtomicPredicate(name, sel.qualifier, args.head)
+    case TermName(name) => generateAtomicPredicate(getComparator(name), sel.qualifier, args.head)
     case _ => throw new IllegalArgumentException(s"Filter operation for op ${sel.name} not supported.")
   }
 
-  def generateAtomicPredicate(op: String, lhs: Tree, rhs: Tree): Predicate = lhs match {
+  private def generateAtomicPredicate(comp: Comparator, lhs: Tree, rhs: Tree): Predicate = lhs match {
     //lhs is column
     case lhsQualifier: Select => {
       val lhsSplit = lhsQualifier.toString().split("\\.")
-      val lhsTtbl = symbolTable(lhsSplit.head)
+      val lhsTbl = symbolTable(lhsSplit.head)
       val lhsCol = lhsSplit.tail.mkString("_").toUpperCase
 
-      rhs match {
-        //lhs and rhs are columns
-        case rhsQualifier: Select => {
-          val rhsSplit = rhsQualifier.toString().split("\\.")
-          val rhsTtbl = symbolTable(rhsSplit.head)
-          val rhsCol = rhsSplit.tail.mkString("_").toUpperCase
+      createColRhsPredicate(comp, lhsTbl, lhsCol, rhs)
+    }
+    case Ident(name) => {
+      val lhsTbl = symbolTable(s"$name")
+      val lhsCol = basicTypeColumnName
 
-          val comparator = getComparator(op)
-          ColCol(AttrRef(lhsTtbl, lhsCol, lhsCol), AttrRef(rhsTtbl, rhsCol, rhsCol), comparator)
-        }
-        //lhs is column and rhs is const
-        case Literal(c: Constant) => ColConst(AttrRef(lhsTtbl, lhsCol, lhsCol), matchConst(c), getComparator(op))
-      }
+      createColRhsPredicate(comp, lhsTbl, lhsCol, rhs)
     }
     //lhs is const
     case Literal(c: Constant) => rhs match {
@@ -71,11 +67,35 @@ class SelectionGenerator(ast: Tree, symbolTable: Map[String, String]) extends Js
         val rhsTtbl = symbolTable(rhsSplit.head)
         val rhsCol = rhsSplit.tail.mkString("_").toUpperCase
 
-        val comparator = getComparator(op)
-        ColConst(AttrRef(rhsTtbl, rhsCol, rhsCol), matchConst(c), comparator)
+        ColConst(AttrRef(rhsTtbl, rhsCol, rhsCol), matchConst(c), comp)
+      }
+      case Ident(name) => {
+        val rhsTtbl = symbolTable(s"$name")
+        val rhsCol = basicTypeColumnName
+
+        ColConst(AttrRef(rhsTtbl, rhsCol, rhsCol), matchConst(c), comp)
       }
       case _ => throw new IllegalArgumentException(s"Const-const predicate not allowed.")
     }
+  }
+
+  private def createColRhsPredicate(comp: Comparator, lhsTbl: String, lhsCol: String, rhs: Tree) = rhs match {
+    //lhs and rhs are columns
+    case rhsQualifier: Select => {
+      val rhsSplit = rhsQualifier.toString().split("\\.")
+      val rhsTtbl = symbolTable(rhsSplit.head)
+      val rhsCol = rhsSplit.tail.mkString("_").toUpperCase
+
+      ColCol(AttrRef(lhsTbl, lhsCol, lhsCol), AttrRef(rhsTtbl, rhsCol, rhsCol), comp)
+    }
+    case Ident(name) => {
+      val rhsTtbl = symbolTable(s"$name")
+      val rhsCol = basicTypeColumnName
+
+      ColCol(AttrRef(lhsTbl, lhsCol, lhsCol), AttrRef(rhsTtbl, rhsCol, rhsCol), comp)
+    }
+    //lhs is column and rhs is const
+    case Literal(c: Constant) => ColConst(AttrRef(lhsTbl, lhsCol, lhsCol), matchConst(c), comp)
   }
 
   private def getComparator(op: String): Comparator = mappedSelectionComparators get op match {

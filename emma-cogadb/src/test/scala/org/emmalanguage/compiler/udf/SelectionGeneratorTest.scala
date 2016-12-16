@@ -17,7 +17,8 @@ class SelectionGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
   val symbolTable = Map[String, String](
     "p" -> "PART",
-    "n" -> "NESTED_TABLE")
+    "n" -> "NESTED_TABLE",
+    "i" -> "INT")
 
   //add tests for different predicates
 
@@ -25,6 +26,17 @@ class SelectionGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
     val ast = typecheck(reify {
       () => (p: Part) => p.p_size == p.p_retailprice
+    }.tree)
+
+    val actual = new SelectionGenerator(ast, symbolTable).generate
+
+    println(actual)
+  }
+
+  "SelectionGenerator" should "compile basic types" in {
+
+    val ast = typecheck(reify {
+      () => (i: Int) => i <= 10
     }.tree)
 
     val actual = new SelectionGenerator(ast, symbolTable).generate
