@@ -28,7 +28,7 @@ class ReduceUDFGenerator(zAst: Tree, sngAst: Tree, uniAst: Tree, symbolTable: Ma
     case Literal(c: Constant) => {
       val redUdfPayload = ReduceUdfAttr(c.tpe.toJsonAttributeType, intermediateReduceCodeResult, matchConst(c))
 
-      //transform sngAst and merge with uniAst
+      //transform sngAst => first part of ReduceUdfCode
       val localMapVarName = "local_map_res"
       val sngTransformedAst = {
         val transformed = new SngUDFTransformer(localMapVarName, c.tpe).transform(sngAst)
@@ -36,12 +36,14 @@ class ReduceUDFGenerator(zAst: Tree, sngAst: Tree, uniAst: Tree, symbolTable: Ma
         tb.typecheck(unTypedChecked)
       }
 
+      //transform uniAst => second part of ReduceUdfCode
       val uniTransformedAst = {
         val uniTransformer = new UniUDFTransformer(intermediateReduceCodeResult, localMapVarName)
         uniTransformer.transform(uniAst)
         uniTransformer.resultBody
       }
 
+      //merge both, sngAst and uniAst
       val mergedAsts = {
         val transformed = new SngUniAstMerger(intermediateReduceCodeResult, c.tpe,
           uniTransformedAst).transform(sngTransformedAst)
@@ -49,12 +51,16 @@ class ReduceUDFGenerator(zAst: Tree, sngAst: Tree, uniAst: Tree, symbolTable: Ma
         tb.typecheck(unTypedChecked)
       }
       
+      //map intermediate reduceUdfCode result in symbol table and apply annotated C code generation approach
       val updatedSymTbl = symbolTable ++ Map(intermediateReduceCodeResult -> "<hash_entry>")
       val reduceUdfCode: Seq[String] = generateAnnotatedCCode(updatedSymTbl, mergedAsts, true)
       
+      //create relevant values for ReduceUdf (currently we generate always algebraic reduce UDFs)
       val finalReduceOutName = freshTypeName("REDUCE_UDF_RES_")
       val finalReduceOutAttr = ReduceUdfOutAttr(c.tpe.toJsonAttributeType, s"$finalReduceOutName",
         s"$finalReduceOutName")
+      
+      //project the intermediate reduceUdfCode result, which holds the reduced result
       val reduceUdfFinalCode =
         ReduceUdfCode(s"#<OUT>.${finalReduceOutName}#=#<hash_entry>.$intermediateReduceCodeResult#;")
       

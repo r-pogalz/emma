@@ -1,7 +1,8 @@
 package org.emmalanguage
 package compiler.udf
 
-import org.emmalanguage.compiler.udf.MapUDFGeneratorTest._
+import org.emmalanguage.compiler.lang.cogadb.ast._
+import org.emmalanguage.compiler.udf.ReduceUDFGeneratorTest._
 import org.junit.runner.RunWith
 import org.scalatest._
 import org.scalatest.junit.JUnitRunner
@@ -35,7 +36,16 @@ class ReduceUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
     val actual = new ReduceUDFGenerator(z, sngAst, uniAst, symbolTable).generate
 
-    println(actual)
+    val expectedReduceOutName = nextExpectedOutputIdentifier
+    val expected = AlgebraicReduceUdf(
+      List(ReduceUdfAttr("INT", "intermediate_reduce_res", IntConst(0))),
+      List(ReduceUdfOutAttr("INT", expectedReduceOutName, expectedReduceOutName)),
+      List(ReduceUdfCode("int32_t local_map_res=(#PART.P_SIZE#*#PART.P_PARTKEY#);"),
+        ReduceUdfCode("#<hash_entry>.intermediate_reduce_res#=" +
+          "(#<hash_entry>.intermediate_reduce_res#+local_map_res);")),
+      List(ReduceUdfCode(s"#<OUT>.$expectedReduceOutName#=#<hash_entry>.intermediate_reduce_res#;")))
+
+    actual should be(expected)
   }
 
   "ReduceUDFGenerator" should "generate AlgebraicReduceUdf for block" in {
@@ -57,7 +67,17 @@ class ReduceUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
     val actual = new ReduceUDFGenerator(z, sngAst, uniAst, symbolTable).generate
 
-    println(actual)
+    val expectedReduceOutName = nextExpectedOutputIdentifier
+    val expected = AlgebraicReduceUdf(
+      List(ReduceUdfAttr("INT", "intermediate_reduce_res", IntConst(0))),
+      List(ReduceUdfOutAttr("INT", expectedReduceOutName, expectedReduceOutName)),
+      List(ReduceUdfCode("int32_t x=(#PART.P_PARTKEY#+9);"),
+        ReduceUdfCode("int32_t local_map_res=(#PART.P_SIZE#*x);"),
+        ReduceUdfCode("#<hash_entry>.intermediate_reduce_res#=" +
+          "(#<hash_entry>.intermediate_reduce_res#+local_map_res);")),
+      List(ReduceUdfCode(s"#<OUT>.$expectedReduceOutName#=#<hash_entry>.intermediate_reduce_res#;")))
+    
+    actual should be(expected)
   }
 
   "ReduceUDFGenerator" should "generate AlgebraicReduceUdf for two blocks" in {
@@ -82,7 +102,17 @@ class ReduceUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
     val actual = new ReduceUDFGenerator(z, sngAst, uniAst, symbolTable).generate
 
-    println(actual)
+    val expectedReduceOutName = nextExpectedOutputIdentifier
+    val expected = AlgebraicReduceUdf(
+      List(ReduceUdfAttr("INT", "intermediate_reduce_res", IntConst(5))),
+      List(ReduceUdfOutAttr("INT", expectedReduceOutName, expectedReduceOutName)),
+      List(ReduceUdfCode("int32_t x=(#PART.P_PARTKEY#+9);"),
+        ReduceUdfCode("int32_t local_map_res=(#PART.P_SIZE#*x);"),
+        ReduceUdfCode("int32_t d=(2-local_map_res);"),
+        ReduceUdfCode("#<hash_entry>.intermediate_reduce_res#=(d+(#<hash_entry>.intermediate_reduce_res#*2));")),
+      List(ReduceUdfCode(s"#<OUT>.$expectedReduceOutName#=#<hash_entry>.intermediate_reduce_res#;")))
+
+    actual should be(expected)
   }
 
 
@@ -91,6 +121,13 @@ class ReduceUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 }
 
 object ReduceUDFGeneratorTest {
+
+  var currentExpectedOutputId = 0
+
+  def nextExpectedOutputIdentifier = {
+    currentExpectedOutputId = currentExpectedOutputId + 1
+    s"REDUCE_UDF_RES_$currentExpectedOutputId"
+  }
 
   case class Part(p_partkey: Int, p_name: String, p_size: Int, p_retailprice: Double, p_comment: String)
 
