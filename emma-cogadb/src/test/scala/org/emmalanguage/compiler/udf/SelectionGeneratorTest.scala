@@ -1,6 +1,7 @@
 package org.emmalanguage
 package compiler.udf
 
+import org.emmalanguage.compiler.lang.cogadb.ast._
 import org.emmalanguage.compiler.udf.MapUDFGeneratorTest._
 import org.junit.runner.RunWith
 import org.scalatest._
@@ -20,7 +21,7 @@ class SelectionGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
     "n" -> "NESTED_TABLE",
     "i" -> "INT")
 
-  //add tests for different predicates
+  //TODO: add tests for different predicates
 
   "SelectionGenerator" should "compile column-column predicate" in {
 
@@ -30,7 +31,12 @@ class SelectionGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter 
 
     val actual = new SelectionGenerator(ast, symbolTable).generate
 
-    println(actual)
+    val expected = Selection(ColCol(
+      AttrRef("PART", "P_SIZE", "P_SIZE", 1),
+      AttrRef("PART", "P_RETAILPRICE", "P_RETAILPRICE", 1),
+      Equal))
+    
+    actual should be(expected)
   }
 
   "SelectionGenerator" should "compile basic types" in {
