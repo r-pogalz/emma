@@ -6,6 +6,10 @@ import scala.reflect.runtime.universe._
 
 trait AnnotatedCCodeGenerator extends TypeHelper {
 
+  private val reservedKeywords = Seq("auto", "long", "switch", "break", "enum", "register", "typedef", "extern",
+    "union", "char", "float", "short", "unsigned", "const", "signed", "void", "continue", "goto", "sizeof", "volatile",
+    "default", "static", "int", "struct", "_Packed", "double")
+
   private val supportedUnaryMethods = Map(
     TermName("toDouble") -> "(double)",
     TermName("toFloat") -> "(float)",
@@ -123,6 +127,8 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
   private def transformValDef(symbolTable: Map[String, String], name: TermName, tpt: TypeTree, rhs: Tree):
   Seq[String] = {
     //TODO: perform name check
+    if (reservedKeywords.contains(s"$name"))
+      throw new IllegalArgumentException(s"Please choose a new name for local variable $name.")
     //    localVars += (name -> (tpt.tpe, name))
     generateAssignmentStmt(generateVarDef(tpt.tpe.toCPrimitive, name),
       generateAnnotatedCCode(symbolTable, rhs).mkString)
@@ -208,7 +214,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
 
   private def transformLiteral(lit: Literal, isFinalStmt: Boolean, infix: String = ""): Seq[String] = {
     if (isFinalStmt) {
-      generateAssignmentStmt(generateOutputExpr(newUDFOutput(lit.value.tpe, infix)), Const(lit.value))
+      generateAssignmentStmt(generateOutputExpr(newUDFOutput(lit.tpe, infix)), Const(lit.value))
     } else {
       Seq(Const(lit.value))
     }
@@ -237,15 +243,15 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
 
   private def mapFieldNameToType(members: List[Symbol], types: List[Type]): List[(String, Type)] = {
     if (members.isEmpty) List()
-    else (members.head.name.toString.trim, types.head) +: mapFieldNameToType(members.tail, types.tail)
+    else (members.head.name.toString.trim, types.head) +:
+      mapFieldNameToType(members.tail, types.tail)
   }
 
   private def transformAndFlattenComplexInputOutput(tblName: String, tpe: Type, infix: String = ""): Seq[String] = {
     val valueMembers = tpe.members.filter(!_.isMethod).toList.reverse
     var fieldNamesAndTypes = valueMembers.map(v => (v.name.toString.trim, v.typeSignature))
-    val typeArgs = tpe.typeArgs
-    if (!typeArgs.isEmpty) {
-      //tpe is a Tuple
+    if (tpe.isTuple) {
+      val typeArgs = tpe.typeArgs
       fieldNamesAndTypes = mapFieldNameToType(valueMembers, typeArgs)
     }
 
@@ -331,9 +337,26 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
   private def transformSelect(symbolTable: Map[String, String], sel: Select, isFinalStmt: Boolean): Seq[String] = {
     val split = sel.toString.split("\\.")
     if (sel.symbol.toString.startsWith("method") && isSupportedUnaryMethod(sel.name)) {
-      Seq(generateUnaryOp(sel.name.toTermName, generateAnnotatedCCode(symbolTable, sel.qualifier).mkString))
+      val op = generateUnaryOp(sel.name.toTermName, generateAnnotatedCCode(symbolTable, sel.qualifier).mkString)
+      if (isFinalStmt)
+        generateAssignmentStmt(generateOutputExpr(newUDFOutput(sel.tpe)), op)
+      else
+        Seq(op)
     } else if (symbolTable isDefinedAt (split.head)) {
-      Seq(generateColAccess(symbolTable(split.head), split.tail.mkString("_")))
+      val tblName = symbolTable(split.head)
+      val colName = split.tail.mkString("_")
+      if (sel.tpe.isScalaBasicType) {
+        val colAccess = generateColAccess(tblName, colName)
+        if (isFinalStmt)
+          generateAssignmentStmt(generateOutputExpr(newUDFOutput(sel.tpe)), colAccess)
+        else
+          Seq(colAccess)
+      } else {
+        if (isFinalStmt)
+          transformAndFlattenComplexInputOutput(tblName, sel.tpe, colName)
+        else
+          throw new IllegalArgumentException(s"Value access for ${sel.name} not allowed at this place.")
+      }
     } else if (sel.symbol.toString.startsWith("method") && !isSupportedUnaryMethod(sel.name)) {
       throw new IllegalArgumentException(s"Method ${sel.name} not supported.")
     } else {

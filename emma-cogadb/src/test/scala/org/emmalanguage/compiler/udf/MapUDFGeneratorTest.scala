@@ -222,6 +222,22 @@ class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
     actual.mapUdfOutAttr.head should be(MapUdfOutAttr("DOUBLE", expResIdentifier, expResIdentifier))
   }
 
+  "MapUDFGenerator" should "consider projection of case class access to a basic type" in {
+
+    val ast = typecheck(reify {
+      () => (p: Part) => p.p_size
+    }.tree)
+
+    val actual = new MapUDFGenerator(ast, symbolTable).generate
+
+    val expResIdentifier = nextExpectedOutputIdentifier
+    val expectedUDF = s"#<OUT>.$expResIdentifier#=#PART.P_SIZE#;"
+
+    actual.concatenated should be(expectedUDF)
+    actual.mapUdfOutAttr.size should be(1)
+    actual.mapUdfOutAttr.head should be(MapUdfOutAttr("INT", expResIdentifier, expResIdentifier))
+  }
+
   "MapUDFGenerator" should "return multiple results for a Complex output type" in {
 
     val ast = typecheck(reify {
@@ -399,6 +415,26 @@ class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
 
     val actual = new MapUDFGenerator(ast, Map[String, String]("input" -> "TABLE")).generate
     val expectedUDF = s"#<OUT>.$nextExpectedOutputIdentifier#=(#TABLE.TODOUBLE#*0.5);"
+
+    actual.concatenated should be(expectedUDF)
+  }
+
+  case class NestedPart(triplet: (Int, Part, Double))
+
+  "MapUDFGenerator" should "compile projection of nested input" in {
+
+    val ast = typecheck(reify {
+      () => (input: NestedPart) => input.triplet
+    }.tree)
+
+    val actual = new MapUDFGenerator(ast, Map[String, String]("input" -> "NESTEDPART")).generate
+    val expectedUDF = s"#<OUT>.MAP_UDF_RES_TRIPLET_1_1#=#NESTEDPART.TRIPLET_1#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_2_P_PARTKEY_1#=#NESTEDPART.TRIPLET_2_P_PARTKEY#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_2_P_NAME_1#=#NESTEDPART.TRIPLET_2_P_NAME#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_2_P_SIZE_1#=#NESTEDPART.TRIPLET_2_P_SIZE#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_2_P_RETAILPRICE_1#=#NESTEDPART.TRIPLET_2_P_RETAILPRICE#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_2_P_COMMENT_1#=#NESTEDPART.TRIPLET_2_P_COMMENT#;" +
+      s"#<OUT>.MAP_UDF_RES_TRIPLET_3_1#=#NESTEDPART.TRIPLET_3#;"
 
     actual.concatenated should be(expectedUDF)
   }

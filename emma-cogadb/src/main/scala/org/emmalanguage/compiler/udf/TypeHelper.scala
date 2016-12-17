@@ -35,18 +35,21 @@ trait TypeHelper {
     private val basicTypes = Seq(typeOf[Short], typeOf[Int], typeOf[Long], typeOf[Float], typeOf[Double], typeOf[Char],
       typeOf[String], typeOf[java.lang.String], typeOf[Boolean])
 
-    def toCPrimitive: Name = scalaToC.get(t) match {
+    def toCPrimitive: Name = scalaToC.get(t.finalType) match {
       case Some(value) => value
       case None => throw new IllegalArgumentException(s"No existing primitive C type for $t.")
     }
 
-    def toJsonAttributeType: String = scalaToJsonAttributeType.get(t) match {
+    def toJsonAttributeType: String = scalaToJsonAttributeType.get(t.finalType) match {
       case Some(value) => value
       case None => throw new IllegalArgumentException(s"No existing JSON attribute type for $t.")
     }
+    
+    def finalType = t.finalResultType.widen
 
-    def isScalaBasicType: Boolean = basicTypes.contains(t)
+    def isScalaBasicType: Boolean = basicTypes.contains(t.finalType)
 
+    def isTuple: Boolean = !t.typeArgs.isEmpty
   }
 
 
