@@ -42,9 +42,7 @@ class UDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
       "#<OUT>.MAP_UDF_RES_P_SIZE_1#=#PART.P_SIZE#;" +
       "#<OUT>.MAP_UDF_RES_P_RETAILPRICE_1#=#PART.P_RETAILPRICE#;" +
       "#<OUT>.MAP_UDF_RES_P_COMMENT_1#=#PART.P_COMMENT#;" +
-      "}else{" +
-      "NONE;" +
-      "}"
+      "}else{}"
 
     actual.asInstanceOf[MapUdf].concatenated should be(expectedUDF)
   }
@@ -66,8 +64,7 @@ class UDFTransformerTest extends FlatSpec with Matchers with BeforeAndAfter {
       "#<OUT>.MAP_UDF_RES__1_1#=#TUPLE._1#;" +
       "#<OUT>.MAP_UDF_RES__2_1#=#TUPLE._2#;" +
       "#<OUT>.MAP_UDF_RES__3_1#=#TUPLE._3#;" +
-      "}else{" +
-      "NONE;}"
+      "}else{}"
 
     actual.asInstanceOf[MapUdf].concatenated should be(expectedUDF)
   }

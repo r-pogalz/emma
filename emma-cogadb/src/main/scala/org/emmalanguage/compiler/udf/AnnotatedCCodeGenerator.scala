@@ -126,7 +126,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
 
   private def transformValDef(symbolTable: Map[String, String], name: TermName, tpt: TypeTree, rhs: Tree):
   Seq[String] = {
-    //TODO: perform name check
+    //TODO: create and apply regex for valid C identifiers
     if (reservedKeywords.contains(s"$name"))
       throw new IllegalArgumentException(s"Please choose a new name for local variable $name.")
     //    localVars += (name -> (tpt.tpe, name))
@@ -201,7 +201,8 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
             val transformedCond = generateAnnotatedCCode(symbolTable, cond).mkString
             //flatten thenp stmt
             val transformedThenp = generateAnnotatedCCode(symbolTable, thenp, true)
-            val transformedElsep = Seq(generateLineStmt("NONE"))
+//            val transformedElsep = Seq(generateLineStmt("NONE"))
+            val transformedElsep = Seq()
             generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep)
           }
         }
