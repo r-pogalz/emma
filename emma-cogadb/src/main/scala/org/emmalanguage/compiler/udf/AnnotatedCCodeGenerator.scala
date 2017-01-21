@@ -22,6 +22,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
     TermName("$minus") -> '-,
     TermName("$times") -> '*,
     TermName("$div") -> '/,
+    TermName("$percent") -> '%,
     //    TermName("$up") -> '^,
     TermName("$eq$eq") -> '==,
     TermName("$less") -> '<,
@@ -31,7 +32,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
   )
 
   private val supportedLibraries = Seq(
-    "scala.math.`package`"
+    "scala.math.`package`", "scala.math"
   )
 
   protected def newUDFOutput(tpe: Type, infix: String = ""): TypeName
@@ -43,7 +44,8 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
     if (name.isTermName) supportedBinaryMethods contains name.toTermName else false
 
 
-  def isSupportedLibrary(qualifier: Tree): Boolean = supportedLibraries contains qualifier.toString
+  def isSupportedLibrary(qualifier: Tree): Boolean = (supportedLibraries contains qualifier.toString) ||
+    supportedLibraries.exists(qualifier.tpe.widen.toString.contains(_))
 
   def isInstantiation(name: Name): Boolean = name == TermName("apply")
 
@@ -58,7 +60,8 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
 
   def generateVarDef(tpe: Name, v: Name): String = s"$tpe $v"
 
-  def generateColAccess(tblName: String, tblCol: String): String = s"#$tblName.${tblCol.toUpperCase}#"
+  def generateColAccess(tblName: String, tblCol: String, toUpperCase: Boolean = true): String =
+    if(toUpperCase) s"#$tblName.${tblCol.toUpperCase}#" else s"#$tblName.$tblCol#"
 
   def generateOutputExpr(col: TypeName): String
 
@@ -201,7 +204,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
             val transformedCond = generateAnnotatedCCode(symbolTable, cond).mkString
             //flatten thenp stmt
             val transformedThenp = generateAnnotatedCCode(symbolTable, thenp, true)
-//            val transformedElsep = Seq(generateLineStmt("NONE"))
+            //            val transformedElsep = Seq(generateLineStmt("NONE"))
             val transformedElsep = Seq()
             generateIfThenElseStmt(transformedCond, transformedThenp, transformedElsep)
           }
@@ -227,7 +230,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
         //if input parameter, otherwise local variable
         if (symbolTable isDefinedAt ide.name.toString) {
           generateAssignmentStmt(generateOutputExpr(newUDFOutput(ide.tpe)),
-            generateColAccess(symbolTable(ide.name.toString), basicTypeColumnIdentifier))
+            generateColAccess(symbolTable(ide.name.toString), basicTypeColumnIdentifier, false))
         } else {
           generateAssignmentStmt(generateOutputExpr(newUDFOutput(ide.tpe)), ide.name.toString)
         }
@@ -236,7 +239,11 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
         transformAndFlattenComplexInputOutput(symbolTable(ide.name.toString), ide.tpe)
       }
     } else {
-      Seq(generateLocalVar(ide.name))
+      if (symbolTable isDefinedAt ide.name.toString) {
+        Seq(generateColAccess(symbolTable(ide.name.toString), basicTypeColumnIdentifier, false))
+      } else {
+        Seq(generateLocalVar(ide.name))
+      }
     }
   }
 

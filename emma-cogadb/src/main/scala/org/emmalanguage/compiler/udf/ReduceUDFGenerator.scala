@@ -142,9 +142,6 @@ class ReduceUDFGenerator(zAst: Tree, sngAst: Tree, uniAst: Tree, symbolTable: Ma
     }
   }
   
-  override def generateLocalVar(name: Name): String = if(s"$name" != intermediateReduceCodeResult) s"$name"
-                                                      else s"#<hash_entry>.$intermediateReduceCodeResult#"
-
   override def generateOutputExpr(col: TypeName): String = s"#<hash_entry>.$col#"
 
   override protected def newUDFOutput(tpe: Type, infix: String): TypeName = TypeName(intermediateReduceCodeResult)
