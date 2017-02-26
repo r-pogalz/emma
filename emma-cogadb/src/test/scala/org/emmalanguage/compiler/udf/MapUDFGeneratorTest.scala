@@ -20,30 +20,12 @@ class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
     "p" -> "PART"
   )
 
-  //  val compiler = new RuntimeCompiler()
-  //  import compiler._
-  //
-  //  val idPipeline: u.Expr[Any] => u.Tree =
-  //    compiler
-  //    .identity(typeCheck = true)
-  //    .compose(_.tree)
-  //
-  //  "MapUDFGenerator" should "for testing" in {
-  //    val ast: u.Tree = idPipeline(u.reify {
-  //      def fun(l: Lineitem): Double = {
-  //        val t: Double = 0.5
-  //        l.extendedPrice + t
-  //      }
-  //    })
-  //
-  //    println(ast)
-  //  }
-
   implicit def MapUdfWrapper(t: MapUdf) = new MapUdfHelperClass(t)
 
   final class MapUdfHelperClass(udf: MapUdf) {
     implicit def concatenated: String = udf.mapUdfCode.map(_.code).mkString
   }
+  
 
   "MapUDFGenerator" should
     "compile final if-then-else with single then and else statement and consider double cast" in {
@@ -65,10 +47,6 @@ class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
 
     actual.concatenated should be(expectedUDF)
   }
-
-  //TODO: add more tests for if-then-else
-
-  //TODO: test missing input mappings, filter, blocks
 
   "MapUDFGenerator" should "compile a UDF with a single basic type as input" in {
 
@@ -167,43 +145,6 @@ class MapUDFGeneratorTest extends FlatSpec with Matchers with BeforeAndAfter {
 
     actual.concatenated should be(expectedUDF)
     actual.mapUdfOutAttr.size should be(1)
-  }
-
-  ignore should "throw an exception for missing input-parameter-to-table mapping" in {
-
-    val ast = typecheck(reify {
-      () => (missingMapping: Part) => missingMapping.p_partkey
-    }.tree)
-
-    the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFGenerator(ast, Map[String, String]()).generate
-    } should have message "No mapping found for [l.suppKey]"
-  }
-
-  ignore should "throw an exception if a UDF parameter type is an arbitrary class" in {
-
-    val ast = typecheck(reify {
-      () => (input: ArbitraryClass) => input.value
-    }.tree)
-
-    val symTbl = Map[String, String]("input" -> "ARBITRARY_TABLE")
-
-    the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFGenerator(ast, symTbl).generate
-    } should have message "ArbitraryClass is not a case class."
-  }
-
-  ignore should "throw an exception if a UDF parameter type in a Tuple is an arbitrary class" in {
-
-    val ast = typecheck(reify {
-      () => (input: (Int, ArbitraryClass)) => input._2.value
-    }.tree)
-
-    val symTbl = Map[String, String]("input" -> "TUPLE")
-
-    the[IllegalArgumentException] thrownBy {
-      val actual = new MapUDFGenerator(ast, symbolTable).generate
-    } should have message "ArbitraryClass is not a case class."
   }
 
   "MapUDFGenerator" should "return correct result type" in {

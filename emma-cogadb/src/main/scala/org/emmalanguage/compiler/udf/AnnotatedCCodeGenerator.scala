@@ -11,6 +11,8 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
     "default", "static", "int", "struct", "_Packed", "double")
 
   private val supportedUnaryMethods = Map(
+    TermName("unary_$plus") -> "+",
+    TermName("unary_$minus") -> "-",
     TermName("toDouble") -> "(double)",
     TermName("toFloat") -> "(float)",
     TermName("toInt") -> "(int32_t)",
@@ -61,7 +63,7 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
   def generateVarDef(tpe: Name, v: Name): String = s"$tpe $v"
 
   def generateColAccess(tblName: String, tblCol: String, toUpperCase: Boolean = true): String =
-    if(toUpperCase) s"#$tblName.${tblCol.toUpperCase}#" else s"#$tblName.$tblCol#"
+    if (toUpperCase) s"#$tblName.${tblCol.toUpperCase}#" else s"#$tblName.$tblCol#"
 
   def generateOutputExpr(col: TypeName): String
 
@@ -92,7 +94,6 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
       //      case DefDef(_, _, _, _, _, rhs) =>
       //        transformToMapUdfCode(rhs, isPotentialOut)
 
-      //TODO: check if this case is really necessary
       case Block(Nil, expr) =>
         generateAnnotatedCCode(symbolTable, expr, isPotentialOut)
 
@@ -129,13 +130,16 @@ trait AnnotatedCCodeGenerator extends TypeHelper {
 
   private def transformValDef(symbolTable: Map[String, String], name: TermName, tpt: TypeTree, rhs: Tree):
   Seq[String] = {
-    //TODO: create and apply regex for valid C identifiers
-    if (reservedKeywords.contains(s"$name"))
-      throw new IllegalArgumentException(s"Please choose a new name for local variable $name.")
+    if (reservedKeywords.contains(s"$name") || !isValidIdentifierInC(s"$name"))
+      throw new IllegalArgumentException(s"Invalid local variable identifier for $name.")
     //    localVars += (name -> (tpt.tpe, name))
     generateAssignmentStmt(generateVarDef(tpt.tpe.toCPrimitive, name),
       generateAnnotatedCCode(symbolTable, rhs).mkString)
   }
+   
+  //this function matches an identifier against a regex to check the validity
+  //we allow letters, digits, and underscore (identifier must start with letter or underscore)
+  private def isValidIdentifierInC(ide: String) = ide.matches("(^[a-zA-Z][a-zA-Z0-9_]*)|(^[_][a-zA-Z0-9_]+)")
 
   protected def freshVarName: TermName
 
